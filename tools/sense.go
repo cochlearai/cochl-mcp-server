@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"cochl-mcp-server/client"
+	"cochl-mcp-server/util"
 	"cochl-mcp-server/util/audio"
 )
 
@@ -27,9 +28,6 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			mcp.Required(),
 			mcp.Description(
 				"Please provide the absolute path to the file.\n"+
-					"Path format examples:\n"+
-					"  - Windows: C:\\Users\\name\\file.mp3\n"+
-					"  - macOS/Linux: /Users/name/file.mp3\n"+
 					"Avoid using URL-encoded characters.",
 			),
 		),
@@ -37,6 +35,14 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 
 	handler = func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		filePath := request.Params.Arguments["file_absolute_path"].(string)
+
+		// normalize path
+		normalizedPath, err := util.NormalizePath(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid file path: %v", err)
+		}
+		filePath = normalizedPath
+
 		audioInfo, err := audio.GetAudioInfo(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get audio info: %v", err)
