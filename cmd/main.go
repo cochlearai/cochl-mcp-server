@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -16,6 +15,9 @@ func main() {
 	if apikey == "" {
 		log.Fatal("project-key is not set")
 	}
+
+	baseUrl := common.GetCochlSenseBaseURL()
+	log.Printf("Connecting to %s", baseUrl)
 
 	// Create a new MCP server
 	s := server.NewMCPServer(
@@ -44,6 +46,6 @@ Avoid using URL-encoded characters.`),
 
 	// Start the server
 	if err := server.ServeStdio(s); err != nil {
-		fmt.Printf("Server error: %v\n", err)
+		log.Printf("Server error: %v\n", err)
 	}
 }

@@ -7,13 +7,37 @@ import (
 
 	"resty.dev/v3"
 
-	"cochl-mcp-server/client/msg"
 	"cochl-mcp-server/common"
 	"cochl-mcp-server/util/restcli"
 )
 
-// baseURL can be overridden at build time using ldflags
-var baseURL = "https://api.beta.cochl.ai/sense/api/v1"
+type RespUploadChunk struct {
+	ChunkSequence int    `json:"chunk_sequence"`
+	SessionID     string `json:"session_id"`
+}
+
+type RespCreateSession struct {
+	SessionID     string `json:"session_id"`
+	ChunkSequence int    `json:"chunk_sequence"`
+	WindowSize    int    `json:"window_size"`
+	WindowHop     int    `json:"window_hop"`
+}
+
+type InferenceResult struct {
+	StartTime int    `json:"start_time"`
+	EndTime   int    `json:"end_time"`
+	Tags      []Tags `json:"tags"`
+}
+
+type Tags struct {
+	Probability float64 `json:"probability"`
+	Name        string  `json:"name"`
+}
+
+type RespInferenceResult struct {
+	Data  []InferenceResult `json:"data"`
+	State string            `json:"state"`
+}
 
 var (
 	cochlSenseClient *CochlSenseClient
@@ -26,7 +50,8 @@ type CochlSenseClient struct {
 }
 
 func newClient(key string) *resty.Client {
-	return resty.New().SetBaseURL(baseURL).
+	baseUrl := common.GetCochlSenseBaseURL() + "/sense/api/v1"
+	return resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
 		SetHeader("User-Agent", "cochl-mcp-server/"+common.Version)
 }
@@ -40,7 +65,7 @@ func CochlSense() *CochlSenseClient {
 	return cochlSenseClient
 }
 
-func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration float64, fileSize int) (*msg.RespCreateSession, error) {
+func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration float64, fileSize int) (*RespCreateSession, error) {
 	param := restcli.Params{
 		Body: map[string]any{
 			"type":         "file",
@@ -51,7 +76,7 @@ func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration 
 		},
 	}
 
-	var result msg.RespCreateSession
+	var result RespCreateSession
 	res, err := restcli.Post(c.Client, "/audio_sessions/", &param, &result)
 	if err != nil {
 		return nil, err
@@ -64,7 +89,7 @@ func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration 
 	return &result, nil
 }
 
-func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chunk []byte) (*msg.RespUploadChunk, error) {
+func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chunk []byte) (*RespUploadChunk, error) {
 	base64Chunk := base64.StdEncoding.EncodeToString(chunk)
 	param := restcli.Params{
 		Body: map[string]any{
@@ -72,7 +97,7 @@ func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chun
 		},
 	}
 
-	var result msg.RespUploadChunk
+	var result RespUploadChunk
 	res, err := restcli.Put(c.Client, fmt.Sprintf("/audio_sessions/%s/chunks/%d", sessionID, chunkSequence), &param, &result)
 	if err != nil {
 		return nil, err
@@ -85,8 +110,8 @@ func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chun
 	return &result, nil
 }
 
-func (c *CochlSenseClient) GetInferenceResult(sessionID string) (*msg.RespInferenceResult, error) {
-	var result msg.RespInferenceResult
+func (c *CochlSenseClient) GetInferenceResult(sessionID string) (*RespInferenceResult, error) {
+	var result RespInferenceResult
 	res, err := restcli.Get(c.Client, fmt.Sprintf("/audio_sessions/%s/results", sessionID), nil, &result)
 	if err != nil {
 		return nil, err

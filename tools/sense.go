@@ -9,7 +9,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"cochl-mcp-server/client"
-	"cochl-mcp-server/client/msg"
 	"cochl-mcp-server/util/audio"
 )
 
@@ -38,6 +37,7 @@ func CochlSenseTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		return nil, fmt.Errorf("failed to create session: %v", err)
 	}
 
+	//TODO: if file is too large, upload in chunks
 	_, err = cochlSenseClient.UploadChunk(
 		resp.SessionID,
 		resp.ChunkSequence,
@@ -46,7 +46,8 @@ func CochlSenseTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		return nil, fmt.Errorf("failed to upload chunk: %v", err)
 	}
 
-	var result *msg.RespInferenceResult
+	var result *client.RespInferenceResult
+	//TODO: set timeout
 	for {
 		time.Sleep(2 * time.Second)
 		inferenceResult, err := cochlSenseClient.GetInferenceResult(resp.SessionID)
