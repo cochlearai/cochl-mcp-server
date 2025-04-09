@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-publish:
+    name: Build binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - build-goos: linux
+            build-arch: amd64
+            ext: ''
+          - build-goos: darwin
+            build-arch: arm64
+            ext: ''
+          - build-goos: darwin
+            build-arch: amd64
+            ext: ''
+          - build-goos: windows
+            build-arch: amd64
+            ext: '.exe'
+
+    steps:
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.x
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set output name
+        id: set-tag
+        run: |
+          echo "OUTPUT_NAME=cochl-mcp-server-${{ github.ref_name }}-${{ matrix.build-goos }}-${{ matrix.build-arch }}${{ matrix.ext }}" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -ldflags="-s -w -X cochl-mcp-server/common.Version=${{ github.ref_name }}" -o "${{ steps.set-tag.outputs.OUTPUT_NAME }}" cmd/main.go
+
+      - name: Publish binary
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: "${{ steps.set-tag.outputs.OUTPUT_NAME }}"
+          tag: ${{ github.ref }}
