@@ -36,14 +36,13 @@ jobs:
       - name: Set output name
         id: set-tag
         run: |
-          echo "OUTPUT_NAME=cochl-mcp-server-${{ github.ref_name }}-${{ matrix.build-goos }}-${{ matrix.build-arch }}${{ matrix.ext }}" >> $GITHUB_OUTPUT
+          echo "BINARY_NAME=cochl-mcp-server-${{ github.ref_name }}-${{ matrix.build-goos }}-${{ matrix.build-arch }}${{ matrix.ext }}" >> $GITHUB_OUTPUT
 
       - name: Build
         run: |
-          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -ldflags="-s -w -X cochl-mcp-server/common.Version=${{ github.ref_name }}" -o "${{ steps.set-tag.outputs.OUTPUT_NAME }}" cmd/main.go
+          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -ldflags="-s -w -X cochl-mcp-server/common.Version=${{ github.ref_name }}" -o "${{ steps.set-tag.outputs.BINARY_NAME }}" cmd/main.go
 
-      - name: Publish binary
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
         with:
-          file: "${{ steps.set-tag.outputs.OUTPUT_NAME }}"
-          tag: ${{ github.ref }}
+          files: ${{ steps.set-tag.outputs.BINARY_NAME }}
