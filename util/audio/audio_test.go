@@ -8,28 +8,32 @@ import (
 
 func TestGetAudioInfo(t *testing.T) {
 	tests := []struct {
-		name           string
-		filePath       string
-		expectedFormat string
-		expectedError  bool
+		name             string
+		filePath         string
+		expectedFormat   string
+		expectedDuration int
+		expectedError    bool
 	}{
 		{
-			name:           "WAV file test",
-			filePath:       "testdata/wav-test.wav",
-			expectedFormat: "wav",
-			expectedError:  false,
+			name:             "WAV file test",
+			filePath:         "testdata/wav-test.wav",
+			expectedFormat:   "wav",
+			expectedDuration: 10,
+			expectedError:    false,
 		},
 		{
-			name:           "MP3 file test",
-			filePath:       "testdata/mp3-test.mp3",
-			expectedFormat: "mp3",
-			expectedError:  false,
+			name:             "MP3 file test",
+			filePath:         "testdata/mp3-test.mp3",
+			expectedFormat:   "mp3",
+			expectedDuration: 10,
+			expectedError:    false,
 		},
 		{
-			name:           "OGG file test",
-			filePath:       "testdata/ogg-test.ogg",
-			expectedFormat: "ogg",
-			expectedError:  false,
+			name:             "OGG file test",
+			filePath:         "testdata/ogg-test.ogg",
+			expectedFormat:   "ogg",
+			expectedDuration: 10,
+			expectedError:    false,
 		},
 		{
 			name:           "Unsupported format test",
@@ -70,8 +74,8 @@ func TestGetAudioInfo(t *testing.T) {
 				t.Errorf("Expected format %s but got %s", tt.expectedFormat, info.Format)
 			}
 
-			if info.Duration <= 0 {
-				t.Errorf("Expected duration > 0 but got %f", info.Duration)
+			if int(info.Duration) != tt.expectedDuration {
+				t.Errorf("Expected duration %d but got %f", tt.expectedDuration, info.Duration)
 			}
 
 			t.Logf("Duration for %s: %f seconds", tt.filePath, info.Duration)

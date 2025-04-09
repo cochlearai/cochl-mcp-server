@@ -3,12 +3,9 @@ package audio
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/tcolgate/mp3"
 )
 
 type AudioInfo struct {
@@ -98,23 +95,106 @@ func getWAVDuration(file *os.File) (float64, error) {
 	return duration, nil
 }
 
-func getMP3Duration(file *os.File) (float64, error) {
-	var t float64
-	d := mp3.NewDecoder(file)
-	var f mp3.Frame
-	skipped := 0
-	for {
+var mp3BitRates = map[int]int{
+	1:  32,
+	2:  40,
+	3:  48,
+	4:  56,
+	5:  64,
+	6:  80,
+	7:  96,
+	8:  112,
+	9:  128,
+	10: 160,
+	11: 192,
+	12: 224,
+	13: 256,
+	14: 320,
+}
 
-		if err := d.Decode(&f, &skipped); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return 0, fmt.Errorf("failed to decode MP3: %v", err)
+var mp3SampleRates = map[int]int{
+	0: 44100,
+	1: 48000,
+	2: 32000,
+}
+
+func getMP3Duration(file *os.File) (float64, error) {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get file info: %v", err)
+	}
+
+	size := fileInfo.Size()
+	if size <= 128 {
+		return 0, fmt.Errorf("file too small to be a valid MP3")
+	}
+
+	header := make([]byte, 10)
+	_, err = file.ReadAt(header, 0)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read header: %v", err)
+	}
+
+	var offset int64 = 0
+	if string(header[0:3]) == "ID3" {
+		tagSize := int64(header[6]&0x7f)<<21 |
+			int64(header[7]&0x7f)<<14 |
+			int64(header[8]&0x7f)<<7 |
+			int64(header[9]&0x7f)
+		offset = tagSize + 10
+	}
+
+	frameHeader := make([]byte, 4)
+	var bitRate, sampleRate, frameSize int
+	var totalFrames int64
+	var isVBR bool
+	var prevBitRate int
+
+	for offset < size-4 {
+		_, err = file.ReadAt(frameHeader, offset)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read frame header: %v", err)
 		}
 
-		t = t + f.Duration().Seconds()
+		if frameHeader[0] == 0xff && (frameHeader[1]&0xe0) == 0xe0 {
+			version := (frameHeader[1] >> 3) & 0x03
+			layer := (frameHeader[1] >> 1) & 0x03
+			bitrateIndex := int((frameHeader[2] >> 4) & 0x0f)
+			samplerateIndex := int((frameHeader[2] >> 2) & 0x03)
+			padding := (frameHeader[2] >> 1) & 0x01
+
+			if version == 3 && layer == 1 {
+				bitRate = mp3BitRates[bitrateIndex] * 1000
+				sampleRate = mp3SampleRates[samplerateIndex]
+
+				if prevBitRate != 0 && prevBitRate != bitRate {
+					isVBR = true
+				}
+				prevBitRate = bitRate
+
+				frameSize = ((144 * bitRate) / sampleRate) + int(padding)
+				totalFrames++
+				offset += int64(frameSize)
+			} else {
+				offset++
+			}
+		} else {
+			offset++
+		}
 	}
-	return t, nil
+
+	if totalFrames == 0 {
+		return 0, fmt.Errorf("no valid MP3 frames found")
+	}
+
+	if isVBR {
+		duration := float64(size) / (float64(bitRate) / 8.0)
+		return duration, nil
+	}
+
+	samplesPerFrame := 1152.0 // MPEG1 Layer3
+	duration := float64(totalFrames) * samplesPerFrame / float64(sampleRate)
+	return duration, nil
 }
 
 func getOggDuration(file *os.File) (float64, error) {
