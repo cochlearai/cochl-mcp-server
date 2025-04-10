@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"cochl-mcp-server/client"
+	"cochl-mcp-server/common"
 	"cochl-mcp-server/util"
 	"cochl-mcp-server/util/audio"
 )
@@ -54,7 +55,10 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			return nil, fmt.Errorf("failed to get raw audio data: %v", err)
 		}
 
-		cochlSenseClient := client.CochlSense()
+		cochlSenseClient := common.CochlSenseClientFromContext(ctx)
+		if cochlSenseClient == nil {
+			return nil, fmt.Errorf("cochl sense client not found")
+		}
 
 		resp, err := cochlSenseClient.CreateSession(
 			audioInfo.FileName,

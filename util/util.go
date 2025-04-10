@@ -2,12 +2,20 @@ package util
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
 
 func NormalizePath(path string) (string, error) {
+	// URL decode the path first
+	decodedPath, err := url.PathUnescape(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode path: %v", err)
+	}
+	path = decodedPath
+
 	path = filepath.FromSlash(path)
 
 	if runtime.GOOS == "windows" {
