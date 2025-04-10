@@ -5,18 +5,21 @@ A [Model Context Protocol(MCP)](https://modelcontextprotocol.io/introduction) Se
 ## Use cases
 - For easy analysis by integrating Cochl Sense results with an LLM.
 
-## Usage
+## Installation
 
-1. Build from source
+### Option1: Build from source
 ```bash
 git clone https://github.com/cochlearai/cochl-mcp-server.git
 go build -o cochl-mcp-server cmd/main.go
 ```
-and then place the executable file in your `$PATH`
+- Place the executable file in your system's `$PATH`
 
-2. Download pre-built binary
-- TBD
+### Option2: Download pre-built binary
+- Visit [Releases page](https://github.com/cochlearai/cochl-mcp-server/releases)
+- Download the appropriate version for your operating system and architecture
+- Place the executable file in your system's `$PATH`
 
+## Configuration
 
 ### Cursor IDE
 ```json
