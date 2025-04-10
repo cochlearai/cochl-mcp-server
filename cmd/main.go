@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -25,23 +26,42 @@ func newServer() *server.MCPServer {
 	return s
 }
 
-func run() error {
+func run(transport, port string) error {
 	s := newServer()
-	srv := server.NewStdioServer(s)
-	srv.SetContextFunc(common.ExtractCochlSenseApiClientFromEnv)
 
-	return srv.Listen(context.Background(), os.Stdin, os.Stdout)
+	switch transport {
+	case "sse":
+		srv := server.NewSSEServer(s,
+			server.WithSSEContextFunc(common.SSEContextFunc),
+		)
+		slog.Info("Starting Cochl MCP server using sse transport", "port", port)
+		return srv.Start(":" + port)
+
+	case "stdio":
+		srv := server.NewStdioServer(s)
+		srv.SetContextFunc(common.ExtractCochlSenseApiClientFromEnv)
+		slog.Info("Starting Cochl MCP server using stdio transport")
+		return srv.Listen(context.Background(), os.Stdin, os.Stdout)
+
+	default:
+		return fmt.Errorf("invalid transport: %s", transport)
+	}
+
 }
 
 func main() {
+	var transport string
+	flag.StringVar(&transport, "transport", "stdio", "transport (stdio or sse)")
+	flag.StringVar(&transport, "t", "stdio", "transport (stdio or sse)")
 	logLevel := flag.String("log-level", "info", "log level (debug, info, warn, error)")
+	port := flag.String("sse-port", "8080", "port to listen on (required for sse transport)")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: parseLogLevel(*logLevel),
 	})))
 
-	if err := run(); err != nil {
+	if err := run(transport, *port); err != nil {
 		slog.Error("Server error", "error", err)
 		os.Exit(1)
 	}
