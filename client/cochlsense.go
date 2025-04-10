@@ -3,7 +3,6 @@ package client
 import (
 	"encoding/base64"
 	"fmt"
-	"sync"
 
 	"resty.dev/v3"
 
@@ -37,12 +36,6 @@ type RespInferenceResult struct {
 	Data  []InferenceResult `json:"data"`
 	State string            `json:"state"`
 }
-
-var (
-	cochlSenseClient *CochlSenseClient
-
-	once sync.Once
-)
 
 type CochlSenseClient struct {
 	Client *resty.Client
