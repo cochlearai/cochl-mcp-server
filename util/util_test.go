@@ -46,6 +46,23 @@ func TestNormalizePath(t *testing.T) {
 			input:   "",
 			wantErr: true,
 		},
+		{
+			name:    "URL encoded Windows path",
+			input:   "/c%3A/Users/test/file%20name.mp3",
+			want:    filepath.FromSlash("c:/Users/test/file name.mp3"),
+			windows: true,
+		},
+		{
+			name:    "URL encoded Unix path with special characters",
+			input:   "/home/user/한글%20파일.mp3",
+			want:    "/home/user/한글 파일.mp3",
+			windows: false,
+		},
+		{
+			name:    "Invalid URL encoded path should fail",
+			input:   "/home/user/%XX",
+			wantErr: true,
+		},
 	}
 
 	isWindows := runtime.GOOS == "windows"

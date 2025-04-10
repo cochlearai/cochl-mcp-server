@@ -7,7 +7,6 @@ import (
 
 	"resty.dev/v3"
 
-	"cochl-mcp-server/common"
 	"cochl-mcp-server/util/restcli"
 )
 
@@ -49,20 +48,17 @@ type CochlSenseClient struct {
 	Client *resty.Client
 }
 
-func newClient(key string) *resty.Client {
-	baseUrl := common.GetCochlSenseBaseURL() + "/sense/api/v1"
+func newClient(key string, baseUrl, version string) *resty.Client {
+	baseUrl = baseUrl + "/sense/api/v1"
 	return resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
-		SetHeader("User-Agent", "cochl-mcp-server/"+common.Version)
+		SetHeader("User-Agent", "cochl-mcp-server/"+version)
 }
 
-func CochlSense() *CochlSenseClient {
-	once.Do(func() {
-		cochlSenseClient = &CochlSenseClient{
-			Client: newClient(common.GetCochlSenseProjectKey()),
-		}
-	})
-	return cochlSenseClient
+func NewCochlSense(key string, baseUrl, version string) *CochlSenseClient {
+	return &CochlSenseClient{
+		Client: newClient(key, baseUrl, version),
+	}
 }
 
 func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration float64, fileSize int) (*RespCreateSession, error) {
