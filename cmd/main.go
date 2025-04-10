@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"log"
+	"flag"
+	"log/slog"
 	"os"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -33,8 +34,23 @@ func run() error {
 }
 
 func main() {
+	logLevel := flag.String("log-level", "info", "log level (debug, info, warn, error)")
+	flag.Parse()
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: parseLogLevel(*logLevel),
+	})))
+
 	if err := run(); err != nil {
-		log.Printf("Server error: %v\n", err)
+		slog.Error("Server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func parseLogLevel(logLevel string) slog.Level {
+	var l slog.Level
+	if err := l.UnmarshalText([]byte(logLevel)); err != nil {
+		return slog.LevelInfo
+	}
+	return l
 }

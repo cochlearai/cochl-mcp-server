@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -29,6 +30,7 @@ var ExtractCochlSenseApiClientFromEnv server.StdioContextFunc = func(ctx context
 	}
 	client := client.NewCochlSense(apiKey, baseUrl, Version)
 
+	slog.Debug("CochlSense client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
 	return context.WithValue(ctx, cochlSenseClientKey{}, client)
 }
 
