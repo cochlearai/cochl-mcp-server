@@ -21,7 +21,7 @@ go build -o cochl-mcp-server cmd/main.go
 
 ## Configuration
 
-### Cursor IDE
+### Claude Desktop / Cursor IDE
 ```json
 {
   "mcpServers": {
