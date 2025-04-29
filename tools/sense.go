@@ -69,13 +69,24 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			return nil, fmt.Errorf("failed to create session: %v", err)
 		}
 
-		//TODO: if file is too large, upload in chunks
-		_, err = cochlSenseClient.UploadChunk(
-			resp.SessionID,
-			resp.ChunkSequence,
-			rawData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to upload chunk: %v", err)
+		// Split raw data into 5MB chunks and upload sequentially
+		chunkSize := 5 * 1024 * 1024 // 5MB
+		totalChunks := (len(rawData) + chunkSize - 1) / chunkSize
+		currentSequence := resp.ChunkSequence
+
+		for i := range totalChunks {
+			start := i * chunkSize
+			end := min(start+chunkSize, len(rawData))
+
+			chunk := rawData[start:end]
+			_, err = cochlSenseClient.UploadChunk(
+				resp.SessionID,
+				currentSequence,
+				chunk)
+			if err != nil {
+				return nil, fmt.Errorf("failed to upload chunk %d: %v", i+1, err)
+			}
+			currentSequence++
 		}
 
 		var result *client.RespInferenceResult

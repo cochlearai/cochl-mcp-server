@@ -113,3 +113,11 @@ fabric.properties
 # binary
 *.exe
 cochl-mcp-server
+
+# audio
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+*.aac
