@@ -11,6 +11,10 @@ A [Model Context Protocol(MCP)](https://modelcontextprotocol.io/introduction) Se
 ```bash
 git clone https://github.com/cochlearai/cochl-mcp-server.git
 go build -o cochl-mcp-server cmd/cochl-mcp-server/main.go
+
+# OR
+
+go install github.com/cochlearai/cochl-mcp-server/cmd/cochl-mcp-server@latest
 ```
 - Place the executable file in your system's `$PATH`
 
