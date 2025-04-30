@@ -2,6 +2,8 @@
 
 A [Model Context Protocol(MCP)](https://modelcontextprotocol.io/introduction) Server for Cochl
 
+[![User guide](http://img.youtube.com/vi/lRCQLkYi20A/0.jpg)](https://www.youtube.com/watch?v=lRCQLkYi20A "Cochl.Sense MCP server User Guide")
+
 ## Use cases
 - For easy analysis by integrating Cochl Sense results with an LLM.
 
