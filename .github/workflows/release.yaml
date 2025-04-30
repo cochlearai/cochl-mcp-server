@@ -40,7 +40,7 @@ jobs:
 
       - name: Build
         run: |
-          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -ldflags="-s -w -X cochl-mcp-server/common.Version=${{ github.ref_name }}" -o "${{ steps.set-tag.outputs.BINARY_NAME }}" cmd/main.go
+          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -ldflags="-s -w -X cochl-mcp-server/common.Version=${{ github.ref_name }}" -o "${{ steps.set-tag.outputs.BINARY_NAME }}" cmd/cochl-mcp-server/main.go
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
