@@ -9,8 +9,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
-	"cochl-mcp-server/common"
-	"cochl-mcp-server/tools"
+	"github.com/cochlearai/cochl-mcp-server/common"
+	"github.com/cochlearai/cochl-mcp-server/tools"
 )
 
 func newServer() *server.MCPServer {

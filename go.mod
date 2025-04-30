@@ -1,4 +1,4 @@
-module cochl-mcp-server
+module github.com/cochlearai/cochl-mcp-server
 
 go 1.23.1
 

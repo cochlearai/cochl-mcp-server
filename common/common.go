@@ -8,7 +8,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
-	"cochl-mcp-server/client"
+	"github.com/cochlearai/cochl-mcp-server/client"
 )
 
 // Version is set at build time using ldflags

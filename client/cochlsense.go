@@ -6,7 +6,7 @@ import (
 
 	"resty.dev/v3"
 
-	"cochl-mcp-server/util/restcli"
+	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
 type RespUploadChunk struct {

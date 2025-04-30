@@ -9,10 +9,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"cochl-mcp-server/client"
-	"cochl-mcp-server/common"
-	"cochl-mcp-server/util"
-	"cochl-mcp-server/util/audio"
+	"github.com/cochlearai/cochl-mcp-server/client"
+	"github.com/cochlearai/cochl-mcp-server/common"
+	"github.com/cochlearai/cochl-mcp-server/util"
+	"github.com/cochlearai/cochl-mcp-server/util/audio"
 )
 
 func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
