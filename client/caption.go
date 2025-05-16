@@ -30,7 +30,7 @@ func NewCaption(key string, baseUrl, version string) *CaptionClient {
 func (c *CaptionClient) Inference(contentType, filePath string) (*RespCaptionInference, error) {
 	param := restcli.Params{
 		Formdata: map[string]string{
-			"content_type": contentType,
+			"content_type": "audio/" + contentType,
 		},
 		Files: map[string]string{
 			"file": filePath,

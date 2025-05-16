@@ -22,6 +22,7 @@ func newServer() *server.MCPServer {
 	)
 
 	s.AddTool(tools.Sense())
+	s.AddTool(tools.Caption())
 
 	return s
 }
