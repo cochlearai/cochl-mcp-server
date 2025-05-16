@@ -12,20 +12,11 @@ import (
 
 func Caption() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 	tool = mcp.NewTool("audio_caption",
-		mcp.WithDescription(
-			"Analyze the environmental (background) sounds in an audio file and generate a concise natural language caption. "+
-				"This caption infers and summarizes the likely situation or scene. "+
-				"This tool does not transcribe speech or summarize the full content, "+
-				"but instead focuses on the ambient sounds to describe the environment or context in which the audio was recorded. "+
-				"Example: 'A woman speaks while a television plays in the background.'",
-		),
+		mcp.WithDescription(_audioCaptionDesc),
 		mcp.WithString(
 			"file_absolute_path",
 			mcp.Required(),
-			mcp.Description(
-				"Please provide the absolute path to the file.\n"+
-					"Avoid using URL-encoded characters.",
-			),
+			mcp.Description(_fileAbsolutePathDesc),
 		),
 	)
 
