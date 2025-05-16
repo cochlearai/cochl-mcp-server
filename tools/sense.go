@@ -17,11 +17,15 @@ import (
 func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 	tool = mcp.NewTool("analyze_audio",
 		mcp.WithDescription(
-			"Analyze an audio file and return detected sounds, events, and their probabilities. "+
-				"The analysis includes:\n"+
+			"Analyze an audio file to detect and segment environmental sounds and events over time. "+
+				"This tool provides a detailed timeline, dividing the audio into temporal segments. "+
+				"It identifies which sounds or events occur in each segment, along with their probability scores. "+
+				"Use this tool to understand what kinds of sounds (e.g., 'Water_run', 'Laughter', 'Speech') are present at specific times in the audio. "+
+				"The analysis result includes:\n"+
 				"  - Temporal segments with start and end times\n"+
 				"  - Tags for each segment indicating the detected sounds/events\n"+
-				"  - Probability scores for each detected tag",
+				"  - Probability scores for each detected tag\n"+
+				"Example: Detects 'Water_run' from 0-2s, 'Laughter' from 5-7s, etc.",
 		),
 		mcp.WithString(
 			"file_absolute_path",
@@ -41,9 +45,8 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("invalid file path", err), nil
 		}
-		filePath = normalizedPath
 
-		audioInfo, err := audio.GetAudioInfo(filePath)
+		audioInfo, err := audio.GetAudioInfo(normalizedPath)
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to get audio info", err), nil
 		}
@@ -51,7 +54,7 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		//TODO: check if duration is too long, if so, return error
 
 		// Get raw audio data
-		rawData, err := audio.GetRawAudioData(filePath)
+		rawData, err := audio.GetRawAudioData(normalizedPath)
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to get raw audio data", err), nil
 		}
