@@ -24,21 +24,28 @@ const (
 	_defaultBaseURL = "https://api.cochl.ai"
 )
 
-type cochlSenseClientKey struct{}
+type senseApiClientKey struct{}
+type captionApiClientKey struct{}
 
-var ExtractCochlSenseApiClientFromEnv server.StdioContextFunc = func(ctx context.Context) context.Context {
+var ExtractCochlApiClientFromEnv server.StdioContextFunc = func(ctx context.Context) context.Context {
 	apiKey := os.Getenv(_cochlSenseProjectKeyEnvVar)
 	baseUrl := os.Getenv(_cochlSenseBaseURLEnvVar)
 	if baseUrl == "" {
 		baseUrl = _defaultBaseURL
 	}
-	client := client.NewCochlSense(apiKey, baseUrl, Version)
 
-	slog.Debug("CochlSense client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
-	return context.WithValue(ctx, cochlSenseClientKey{}, client)
+	senseClient := client.NewSense(apiKey, baseUrl, Version)
+	captionClient := client.NewCaption(apiKey, baseUrl, Version)
+
+	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)
+	ctx = context.WithValue(ctx, captionApiClientKey{}, captionClient)
+
+	slog.Debug("Cochl api client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
+
+	return ctx
 }
 
-var ExtractCochlSenseApiClientFromHeader server.SSEContextFunc = func(ctx context.Context, r *http.Request) context.Context {
+var ExtractCochlApiClientFromHeader server.HTTPContextFunc = func(ctx context.Context, r *http.Request) context.Context {
 	apiKey := r.Header.Get(_cochlSenseProjectKeyHeader)
 	baseUrl := r.Header.Get(_cochlSenseBaseURLHeader)
 
@@ -46,19 +53,32 @@ var ExtractCochlSenseApiClientFromHeader server.SSEContextFunc = func(ctx contex
 		baseUrl = _defaultBaseURL
 	}
 
-	client := client.NewCochlSense(apiKey, baseUrl, Version)
+	senseClient := client.NewSense(apiKey, baseUrl, Version)
+	captionClient := client.NewCaption(apiKey, baseUrl, Version)
 
-	slog.Debug("CochlSense client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
-	return context.WithValue(ctx, cochlSenseClientKey{}, client)
+	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)
+	ctx = context.WithValue(ctx, captionApiClientKey{}, captionClient)
+
+	slog.Debug("Cochl api client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
+
+	return ctx
 }
 
 var (
-	SSEContextFunc   server.SSEContextFunc   = ExtractCochlSenseApiClientFromHeader
-	StdioContextFunc server.StdioContextFunc = ExtractCochlSenseApiClientFromEnv
+	HTTPContextFunc  server.HTTPContextFunc  = ExtractCochlApiClientFromHeader
+	StdioContextFunc server.StdioContextFunc = ExtractCochlApiClientFromEnv
 )
 
-func CochlSenseClientFromContext(ctx context.Context) *client.CochlSenseClient {
-	c, ok := ctx.Value(cochlSenseClientKey{}).(*client.CochlSenseClient)
+func CaptionClientFromContext(ctx context.Context) *client.CaptionClient {
+	c, ok := ctx.Value(captionApiClientKey{}).(*client.CaptionClient)
+	if !ok {
+		return nil
+	}
+	return c
+}
+
+func SenseClientFromContext(ctx context.Context) *client.SenseClient {
+	c, ok := ctx.Value(senseApiClientKey{}).(*client.SenseClient)
 	if !ok {
 		return nil
 	}
