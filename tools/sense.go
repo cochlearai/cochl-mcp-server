@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -40,24 +39,26 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		// normalize path
 		normalizedPath, err := util.NormalizePath(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("invalid file path: %v", err)
+			return mcp.NewToolResultErrorFromErr("invalid file path", err), nil
 		}
 		filePath = normalizedPath
 
 		audioInfo, err := audio.GetAudioInfo(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get audio info: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to get audio info", err), nil
 		}
+
+		//TODO: check if duration is too long, if so, return error
 
 		// Get raw audio data
 		rawData, err := audio.GetRawAudioData(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get raw audio data: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to get raw audio data", err), nil
 		}
 
 		cochlSenseClient := common.CochlSenseClientFromContext(ctx)
 		if cochlSenseClient == nil {
-			return nil, fmt.Errorf("cochl sense client not found")
+			return mcp.NewToolResultErrorFromErr("cochl sense client not found", nil), nil
 		}
 
 		resp, err := cochlSenseClient.CreateSession(
@@ -66,7 +67,7 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			audioInfo.Duration,
 			audioInfo.Size)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create session: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to create session", err), nil
 		}
 
 		//TODO: if file is too large, upload in chunks
@@ -75,7 +76,7 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			resp.ChunkSequence,
 			rawData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to upload chunk: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to upload chunk", err), nil
 		}
 
 		var result *client.RespInferenceResult
@@ -84,7 +85,7 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			time.Sleep(2 * time.Second)
 			inferenceResult, err := cochlSenseClient.GetInferenceResult(resp.SessionID)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get inference result: %v", err)
+				return mcp.NewToolResultErrorFromErr("failed to get inference result", err), nil
 			}
 
 			if inferenceResult.State == "done" {
@@ -94,11 +95,11 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		}
 		jsonResult, err := json.Marshal(result.Data)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal inference result: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to marshal inference result", err), nil
 		}
 
 		if err := cochlSenseClient.DeleteSession(resp.SessionID); err != nil {
-			return nil, fmt.Errorf("failed to delete session: %v", err)
+			return mcp.NewToolResultErrorFromErr("failed to delete session", err), nil
 		}
 
 		return mcp.NewToolResultText(string(jsonResult)), nil
