@@ -56,7 +56,7 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			return mcp.NewToolResultErrorFromErr("failed to get raw audio data", err), nil
 		}
 
-		cochlSenseClient := common.CochlSenseClientFromContext(ctx)
+		cochlSenseClient := common.SenseClientFromContext(ctx)
 		if cochlSenseClient == nil {
 			return mcp.NewToolResultErrorFromErr("cochl sense client not found", nil), nil
 		}

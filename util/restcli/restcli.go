@@ -8,6 +8,8 @@ type Params struct {
 	Body    any
 
 	Formdata map[string]string
+
+	Files map[string]string // key is the name of the file, value is the path to the file
 }
 
 func Get(cli *resty.Client, url string, params *Params, result ...any) (*resty.Response, error) {
@@ -48,9 +50,11 @@ func genReq(cli *resty.Client, params *Params, result []any) *resty.Request {
 
 	if params.Header != nil {
 		req = req.SetHeaders(params.Header)
-		if params.Header["Accept"] == "" {
+		if _, ok := params.Header["Accept"]; !ok || params.Header["Accept"] == "" {
 			req = req.SetHeader("Accept", "application/json")
 		}
+	} else {
+		req = req.SetHeader("Accept", "application/json")
 	}
 
 	if params.Queries != nil {
@@ -59,16 +63,17 @@ func genReq(cli *resty.Client, params *Params, result []any) *resty.Request {
 
 	if params.Body != nil {
 		req = req.SetBody(params.Body)
-		if params.Header["Content-Type"] == "" {
+		if params.Header == nil || params.Header["Content-Type"] == "" {
 			req = req.SetHeader("Content-Type", "application/json")
 		}
 	}
 
+	if params.Files != nil {
+		req = req.SetFiles(params.Files)
+	}
+
 	if params.Formdata != nil {
 		req = req.SetFormData(params.Formdata)
-		if params.Header["Content-Type"] == "" {
-			req = req.SetHeader("Content-Type", "multipart/form-data")
-		}
 	}
 	return req
 }
