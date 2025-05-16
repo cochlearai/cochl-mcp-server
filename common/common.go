@@ -34,7 +34,7 @@ var ExtractCochlApiClientFromEnv server.StdioContextFunc = func(ctx context.Cont
 		baseUrl = _defaultBaseURL
 	}
 
-	senseClient := client.NewCochlSense(apiKey, baseUrl, Version)
+	senseClient := client.NewSense(apiKey, baseUrl, Version)
 	captionClient := client.NewCaption(apiKey, baseUrl, Version)
 
 	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)
@@ -53,7 +53,7 @@ var ExtractCochlApiClientFromHeader server.HTTPContextFunc = func(ctx context.Co
 		baseUrl = _defaultBaseURL
 	}
 
-	senseClient := client.NewCochlSense(apiKey, baseUrl, Version)
+	senseClient := client.NewSense(apiKey, baseUrl, Version)
 	captionClient := client.NewCaption(apiKey, baseUrl, Version)
 
 	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)

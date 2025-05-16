@@ -41,7 +41,7 @@ type SenseClient struct {
 	Client *resty.Client
 }
 
-func NewCochlSense(key string, baseUrl, version string) *SenseClient {
+func NewSense(key string, baseUrl, version string) *SenseClient {
 	baseUrl = baseUrl + "/sense/api/v1"
 	cli := resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
