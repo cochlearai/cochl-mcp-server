@@ -3,7 +3,7 @@ module github.com/cochlearai/cochl-mcp-server
 go 1.23.9
 
 require (
-	github.com/mark3labs/mcp-go v0.27.1
+	github.com/mark3labs/mcp-go v0.28.0
 	resty.dev/v3 v3.0.0-beta.3
 )
 
