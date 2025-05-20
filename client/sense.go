@@ -37,24 +37,22 @@ type RespInferenceResult struct {
 	State string            `json:"state"`
 }
 
-type CochlSenseClient struct {
+type SenseClient struct {
 	Client *resty.Client
 }
 
-func newClient(key string, baseUrl, version string) *resty.Client {
+func NewSense(key string, baseUrl, version string) *SenseClient {
 	baseUrl = baseUrl + "/sense/api/v1"
-	return resty.New().SetBaseURL(baseUrl).
+	cli := resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
 		SetHeader("User-Agent", "cochl-mcp-server/"+version)
-}
 
-func NewCochlSense(key string, baseUrl, version string) *CochlSenseClient {
-	return &CochlSenseClient{
-		Client: newClient(key, baseUrl, version),
+	return &SenseClient{
+		Client: cli,
 	}
 }
 
-func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration float64, fileSize int) (*RespCreateSession, error) {
+func (c *SenseClient) CreateSession(fileName, contentType string, duration float64, fileSize int) (*RespCreateSession, error) {
 	param := restcli.Params{
 		Body: map[string]any{
 			"type":         "file",
@@ -78,7 +76,7 @@ func (c *CochlSenseClient) CreateSession(fileName, contentType string, duration 
 	return &result, nil
 }
 
-func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chunk []byte) (*RespUploadChunk, error) {
+func (c *SenseClient) UploadChunk(sessionID string, chunkSequence int, chunk []byte) (*RespUploadChunk, error) {
 	base64Chunk := base64.StdEncoding.EncodeToString(chunk)
 	param := restcli.Params{
 		Body: map[string]any{
@@ -99,7 +97,7 @@ func (c *CochlSenseClient) UploadChunk(sessionID string, chunkSequence int, chun
 	return &result, nil
 }
 
-func (c *CochlSenseClient) GetInferenceResult(sessionID string) (*RespInferenceResult, error) {
+func (c *SenseClient) GetInferenceResult(sessionID string) (*RespInferenceResult, error) {
 	var result RespInferenceResult
 	res, err := restcli.Get(c.Client, fmt.Sprintf("/audio_sessions/%s/results", sessionID), nil, &result)
 	if err != nil {
@@ -113,7 +111,7 @@ func (c *CochlSenseClient) GetInferenceResult(sessionID string) (*RespInferenceR
 	return &result, nil
 }
 
-func (c *CochlSenseClient) DeleteSession(sessionID string) error {
+func (c *SenseClient) DeleteSession(sessionID string) error {
 	res, err := restcli.Delete(c.Client, fmt.Sprintf("/audio_sessions/%s", sessionID), nil)
 	if err != nil {
 		return err

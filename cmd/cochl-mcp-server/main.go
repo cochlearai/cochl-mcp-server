@@ -22,6 +22,7 @@ func newServer() *server.MCPServer {
 	)
 
 	s.AddTool(tools.Sense())
+	s.AddTool(tools.Caption())
 
 	return s
 }
@@ -32,14 +33,14 @@ func run(transport, port string) error {
 	switch transport {
 	case "sse":
 		srv := server.NewSSEServer(s,
-			server.WithSSEContextFunc(common.SSEContextFunc),
+			server.WithHTTPContextFunc(common.HTTPContextFunc),
 		)
 		slog.Info("Starting Cochl MCP server using sse transport", "port", port)
 		return srv.Start(":" + port)
 
 	case "stdio":
 		srv := server.NewStdioServer(s)
-		srv.SetContextFunc(common.ExtractCochlSenseApiClientFromEnv)
+		srv.SetContextFunc(common.ExtractCochlApiClientFromEnv)
 		slog.Info("Starting Cochl MCP server using stdio transport")
 		return srv.Listen(context.Background(), os.Stdin, os.Stdout)
 
