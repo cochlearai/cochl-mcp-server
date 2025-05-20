@@ -14,11 +14,17 @@ import (
 )
 
 func newServer() *server.MCPServer {
+	defaultOpts := []server.ServerOption{
+		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(true, true),
+		server.WithLogging(),
+		server.WithRecovery(),
+	}
+
 	s := server.NewMCPServer(
 		"mcp-cochl",
 		common.Version,
-		server.WithResourceCapabilities(true, true),
-		server.WithLogging(),
+		defaultOpts...,
 	)
 
 	s.AddTool(tools.Sense())
