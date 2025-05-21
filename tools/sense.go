@@ -25,12 +25,15 @@ func Sense() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 	)
 
 	handler = func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		filePath := request.Params.Arguments["file_absolute_path"].(string)
+		filePath, err := request.RequireString("file_absolute_path")
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("missing or invalid 'file_absolute_path' parameter", err), nil
+		}
 
 		// normalize path
 		normalizedPath, err := util.NormalizePath(filePath)
 		if err != nil {
-			return mcp.NewToolResultErrorFromErr("invalid file path", err), nil
+			return mcp.NewToolResultErrorFromErr("failed to normalize file path", err), nil
 		}
 
 		audioInfo, err := audio.GetAudioInfo(normalizedPath)
