@@ -35,13 +35,13 @@ func Test_Caption(t *testing.T) {
 		},
 		{
 			name:           "no such file",
-			args:           map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/txt-test.txt")},
+			args:           map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/nonexistent.wav")},
 			expectError:    true,
 			expectedErrMsg: "failed to get audio info",
 		},
 		{
 			name:            "successful caption",
-			args:            map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/wav-test.wav")},
+			args:            map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/wav-test.wav")},
 			expectError:     false,
 			expectedCaption: "This is a mock caption.",
 		},

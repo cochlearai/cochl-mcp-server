@@ -31,10 +31,11 @@ func createMCPRequest(args any) mcp.CallToolRequest {
 	}
 }
 
-func getAbsPath(relativePath string) string {
+func getAbsPath(t *testing.T, relativePath string) string {
+	t.Helper()
 	absPath, err := filepath.Abs(relativePath)
 	if err != nil {
-		panic(err)
+		t.Fatalf("failed to get abs path: %v", err)
 	}
 	return absPath
 }

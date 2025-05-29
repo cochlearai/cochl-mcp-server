@@ -38,13 +38,13 @@ func Test_Sense(t *testing.T) {
 		},
 		{
 			name:           "no such file",
-			args:           map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/txt-test.txt")},
+			args:           map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/nonexistent.wav")},
 			expectError:    true,
 			expectedErrMsg: "failed to get audio info",
 		},
 		{
 			name:           "create session error",
-			args:           map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/wav-test.wav")},
+			args:           map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/wav-test.wav")},
 			expectError:    true,
 			expectedErrMsg: "failed to create session",
 
@@ -52,7 +52,7 @@ func Test_Sense(t *testing.T) {
 		},
 		{
 			name:           "upload chunk error",
-			args:           map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/wav-test.wav")},
+			args:           map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/wav-test.wav")},
 			expectError:    true,
 			expectedErrMsg: "failed to upload chunk",
 
@@ -60,7 +60,7 @@ func Test_Sense(t *testing.T) {
 		},
 		{
 			name:           "get inference result error",
-			args:           map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/wav-test.wav")},
+			args:           map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/wav-test.wav")},
 			expectError:    true,
 			expectedErrMsg: "failed to get inference result",
 
@@ -68,7 +68,7 @@ func Test_Sense(t *testing.T) {
 		},
 		{
 			name:        "successful inference",
-			args:        map[string]any{"file_absolute_path": getAbsPath("../util/audio/testdata/wav-test.wav")},
+			args:        map[string]any{"file_absolute_path": getAbsPath(t, "../testdata/wav-test.wav")},
 			expectError: false,
 		},
 	}
