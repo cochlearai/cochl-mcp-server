@@ -20,7 +20,7 @@ type CaptionClient struct {
 	Client *resty.Client
 }
 
-func NewCaption(key string, baseUrl, version string) Caption {
+func NewCaption(key string, baseUrl, version string) *CaptionClient {
 	baseUrl = baseUrl + "/caption/v1"
 	cli := resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
