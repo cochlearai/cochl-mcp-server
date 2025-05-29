@@ -8,6 +8,10 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
+type Caption interface {
+	Inference(contentType, filePath string) (*RespCaptionInference, error)
+}
+
 type RespCaptionInference struct {
 	Caption string `json:"caption"`
 }
@@ -16,7 +20,7 @@ type CaptionClient struct {
 	Client *resty.Client
 }
 
-func NewCaption(key string, baseUrl, version string) *CaptionClient {
+func NewCaption(key string, baseUrl, version string) Caption {
 	baseUrl = baseUrl + "/caption/v1"
 	cli := resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).

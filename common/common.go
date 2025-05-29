@@ -69,16 +69,16 @@ var (
 	StdioContextFunc server.StdioContextFunc = ExtractCochlApiClientFromEnv
 )
 
-func CaptionClientFromContext(ctx context.Context) *client.CaptionClient {
-	c, ok := ctx.Value(captionApiClientKey{}).(*client.CaptionClient)
+func CaptionClientFromContext(ctx context.Context) client.Caption {
+	c, ok := ctx.Value(captionApiClientKey{}).(client.Caption)
 	if !ok {
 		return nil
 	}
 	return c
 }
 
-func SenseClientFromContext(ctx context.Context) *client.SenseClient {
-	c, ok := ctx.Value(senseApiClientKey{}).(*client.SenseClient)
+func SenseClientFromContext(ctx context.Context) client.Sense {
+	c, ok := ctx.Value(senseApiClientKey{}).(client.Sense)
 	if !ok {
 		return nil
 	}

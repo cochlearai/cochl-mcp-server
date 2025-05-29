@@ -9,6 +9,13 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
+type Sense interface {
+	CreateSession(fileName, contentType string, duration float64, fileSize int) (*RespCreateSession, error)
+	UploadChunk(sessionID string, chunkSequence int, chunk []byte) (*RespUploadChunk, error)
+	GetInferenceResult(sessionID string) (*RespInferenceResult, error)
+	DeleteSession(sessionID string) error
+}
+
 type RespUploadChunk struct {
 	ChunkSequence int    `json:"chunk_sequence"`
 	SessionID     string `json:"session_id"`
@@ -41,7 +48,7 @@ type SenseClient struct {
 	Client *resty.Client
 }
 
-func NewSense(key string, baseUrl, version string) *SenseClient {
+func NewSense(key string, baseUrl, version string) Sense {
 	baseUrl = baseUrl + "/sense/api/v1"
 	cli := resty.New().SetBaseURL(baseUrl).
 		SetHeader("X-Api-Key", key).
