@@ -16,21 +16,21 @@ func TestGetAudioInfo(t *testing.T) {
 	}{
 		{
 			name:             "WAV file test",
-			filePath:         "testdata/wav-test.wav",
+			filePath:         "../../testdata/wav-test.wav",
 			expectedFormat:   "wav",
 			expectedDuration: 10,
 			expectedError:    false,
 		},
 		{
 			name:             "MP3 file test",
-			filePath:         "testdata/mp3-test.mp3",
+			filePath:         "../../testdata/mp3-test.mp3",
 			expectedFormat:   "mp3",
 			expectedDuration: 10,
 			expectedError:    false,
 		},
 		{
 			name:             "OGG file test",
-			filePath:         "testdata/ogg-test.ogg",
+			filePath:         "../../testdata/ogg-test.ogg",
 			expectedFormat:   "ogg",
 			expectedDuration: 10,
 			expectedError:    false,
@@ -43,13 +43,13 @@ func TestGetAudioInfo(t *testing.T) {
 		},
 		{
 			name:          "Non-existent file test",
-			filePath:      "testdata/nonexistent.wav",
+			filePath:      "../../testdata/nonexistent.wav",
 			expectedError: true,
 		},
 	}
 
 	// Create unsupported format test file
-	if err := os.WriteFile("testdata/test.xyz", []byte{0x00}, 0644); err != nil {
+	if err := os.WriteFile("../../testdata/test.xyz", []byte{0x00}, 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -92,5 +92,5 @@ func TestGetAudioInfo(t *testing.T) {
 	}
 
 	// Cleanup unsupported format test file
-	os.Remove("testdata/test.xyz")
+	os.Remove("../../testdata/test.xyz")
 }

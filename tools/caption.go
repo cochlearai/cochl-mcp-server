@@ -2,12 +2,14 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/cochlearai/cochl-mcp-server/common"
 	"github.com/cochlearai/cochl-mcp-server/util"
 	"github.com/cochlearai/cochl-mcp-server/util/audio"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func Caption() (tool mcp.Tool, handler server.ToolHandlerFunc) {
@@ -44,12 +46,17 @@ func Caption() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			return mcp.NewToolResultErrorFromErr("caption client not found", nil), nil
 		}
 
-		caption, err := captionClient.Inference(audioInfo.Format, normalizedPath)
+		result, err := captionClient.Inference(audioInfo.Format, normalizedPath)
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to get caption", err), nil
 		}
 
-		return mcp.NewToolResultText(caption.Caption), nil
+		jsonResult, err := json.Marshal(result)
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("failed to marshal inference result", err), nil
+		}
+
+		return mcp.NewToolResultText(string(jsonResult)), nil
 	}
 
 	return tool, handler

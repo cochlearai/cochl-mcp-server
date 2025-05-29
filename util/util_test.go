@@ -15,9 +15,10 @@ func TestNormalizePath(t *testing.T) {
 		windows bool
 	}{
 		{
-			name:  "Windows drive letter path",
-			input: "C:/Users/test/file.mp3",
-			want:  filepath.FromSlash("C:/Users/test/file.mp3"),
+			name:    "Windows drive letter path",
+			input:   "C:/Users/test/file.mp3",
+			want:    filepath.FromSlash("C:/Users/test/file.mp3"),
+			windows: true,
 		},
 		{
 			name:    "Windows path with slash prefix",

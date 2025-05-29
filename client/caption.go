@@ -8,6 +8,10 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
+type Caption interface {
+	Inference(contentType, filePath string) (*RespCaptionInference, error)
+}
+
 type RespCaptionInference struct {
 	Caption string `json:"caption"`
 }
