@@ -65,7 +65,7 @@ var ExtractCochlApiClientFromHeader server.HTTPContextFunc = func(ctx context.Co
 }
 
 var (
-	HTTPContextFunc  server.HTTPContextFunc  = ExtractCochlApiClientFromHeader
+	HttpContextFunc  server.HTTPContextFunc  = ExtractCochlApiClientFromHeader
 	StdioContextFunc server.StdioContextFunc = ExtractCochlApiClientFromEnv
 )
 
