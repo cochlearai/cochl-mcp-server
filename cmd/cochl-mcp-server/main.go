@@ -37,11 +37,11 @@ func run(transport, port string) error {
 	s := newServer()
 
 	switch transport {
-	case "sse":
-		srv := server.NewSSEServer(s,
-			server.WithHTTPContextFunc(common.HTTPContextFunc),
+	case "http":
+		srv := server.NewStreamableHTTPServer(s,
+			server.WithHTTPContextFunc(common.HttpContextFunc),
 		)
-		slog.Info("Starting Cochl MCP server using sse transport", "port", port)
+		slog.Info("Starting Cochl MCP server using streamable http transport", "port", port)
 		return srv.Start(":" + port)
 
 	case "stdio":
@@ -58,10 +58,10 @@ func run(transport, port string) error {
 
 func main() {
 	var transport string
-	flag.StringVar(&transport, "transport", "stdio", "transport (stdio or sse)")
-	flag.StringVar(&transport, "t", "stdio", "transport (stdio or sse)")
+	flag.StringVar(&transport, "transport", "stdio", "transport (stdio or http)")
+	flag.StringVar(&transport, "t", "stdio", "transport (stdio or http)")
 	logLevel := flag.String("log-level", "info", "log level (debug, info, warn, error)")
-	port := flag.String("sse-port", "8080", "port to listen on (required for sse transport)")
+	port := flag.String("http-port", "8080", "port to listen on (required for streamable http transport)")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
