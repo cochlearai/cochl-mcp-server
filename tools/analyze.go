@@ -49,15 +49,10 @@ func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		}
 
 		//TODO: support remote file (http url)
-		audioInfo, err := audio.GetAudioInfo(normalizedPath)
+		// Get both audio info and raw data in a single file read
+		audioInfo, rawData, err := audio.GetAudioInfoAndData(normalizedPath)
 		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to get audio info", err), nil
-		}
-
-		// Get raw audio data
-		rawData, err := audio.GetRawAudioData(normalizedPath)
-		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to get raw audio data", err), nil
+			return mcp.NewToolResultErrorFromErr("failed to get audio info and data", err), nil
 		}
 
 		withCaption, _ := request.RequireBool("with_caption")

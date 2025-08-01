@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestGetAudioInfo(t *testing.T) {
+func TestGetAudioInfoAndData(t *testing.T) {
 	tests := []struct {
 		name             string
 		filePath         string
@@ -56,7 +56,7 @@ func TestGetAudioInfo(t *testing.T) {
 	// Run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info, err := GetAudioInfo(tt.filePath)
+			info, data, err := GetAudioInfoAndData(tt.filePath)
 
 			if tt.expectedError {
 				if err == nil {
@@ -82,6 +82,16 @@ func TestGetAudioInfo(t *testing.T) {
 
 			if info.Size <= 0 {
 				t.Errorf("Expected size > 0 but got %d", info.Size)
+			}
+
+			// Verify that data size matches info size
+			if len(data) != info.Size {
+				t.Errorf("Expected data size %d but got %d", info.Size, len(data))
+			}
+
+			// Verify data is not empty
+			if len(data) == 0 {
+				t.Errorf("Expected data to be non-empty")
 			}
 
 			expectedFileName := filepath.Base(tt.filePath)
