@@ -104,6 +104,17 @@ func (m *MockSense) DeleteSession(sessionID string) error {
 }
 
 // Mock implementation for Caption interface
+var (
+	shouldCaptionError bool = false
+)
+
+func ResetMockCaptionErrors() {
+	shouldCaptionError = false
+}
+
+func SetShouldMockCaptionError(v bool) {
+	shouldCaptionError = v
+}
 
 type MockCaption struct{}
 
@@ -112,6 +123,10 @@ func NewMockCaption() *MockCaption {
 }
 
 func (m *MockCaption) Inference(contentType, filePath string) (*RespCaptionInference, error) {
+	if shouldCaptionError {
+		return nil, fmt.Errorf("caption inference error")
+	}
+
 	return &RespCaptionInference{
 		Caption: "This is a mock caption.",
 	}, nil
