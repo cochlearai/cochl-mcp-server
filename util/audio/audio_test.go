@@ -2,7 +2,6 @@ package audio
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -107,11 +106,6 @@ func TestGetAudioInfoAndData(t *testing.T) {
 			// Verify data is not empty
 			if len(data) == 0 {
 				t.Errorf("Expected data to be non-empty")
-			}
-
-			expectedFileName := filepath.Base(tt.path)
-			if info.FileName != expectedFileName {
-				t.Errorf("Expected filename %s but got %s", expectedFileName, info.FileName)
 			}
 		})
 	}

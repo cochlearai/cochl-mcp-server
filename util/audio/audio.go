@@ -101,12 +101,17 @@ func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, err
 		err     error
 	)
 
+	var fileName string
+
 	// Check if it's a remote HTTP URL or use the isRemote flag
 	if isHTTPURL(fileUrl) || isRemote {
 		rawData, format, err = downloadFromHTTP(fileUrl)
 		if err != nil {
 			return nil, nil, err
 		}
+
+		// no need to get filename from URL
+		fileName = fmt.Sprintf("audio-%d.%s", time.Now().UnixNano(), format)
 	} else {
 		// Read local file
 		rawData, err = os.ReadFile(fileUrl)
@@ -119,6 +124,8 @@ func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, err
 		if format != "" {
 			format = format[1:] // Remove the dot
 		}
+
+		fileName = filepath.Base(fileUrl)
 	}
 
 	// Get file size
@@ -145,22 +152,6 @@ func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, err
 		}
 	default:
 		return nil, nil, fmt.Errorf("unsupported audio format: %s", format)
-	}
-
-	// Extract filename from URL
-	var fileName string
-	if isHTTPURL(fileUrl) || isRemote {
-		// For HTTP URLs, try to extract filename from URL path
-		parsedURL, err := url.Parse(fileUrl)
-		if err == nil && parsedURL.Path != "" {
-			fileName = filepath.Base(parsedURL.Path)
-		}
-		// If no proper filename from URL, create one based on format
-		if fileName == "" || fileName == "/" || fileName == "." {
-			fileName = fmt.Sprintf("audio.%s", format)
-		}
-	} else {
-		fileName = filepath.Base(fileUrl)
 	}
 
 	info := &AudioInfo{
