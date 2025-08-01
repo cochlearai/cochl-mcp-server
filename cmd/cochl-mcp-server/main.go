@@ -27,9 +27,7 @@ func newServer() *server.MCPServer {
 		defaultOpts...,
 	)
 
-	s.AddTool(tools.Sense())
-	s.AddTool(tools.Caption())
-
+	s.AddTool(tools.AnalyzeAudio())
 	return s
 }
 

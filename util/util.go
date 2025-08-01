@@ -16,6 +16,10 @@ func NormalizePath(path string) (string, error) {
 	}
 	path = decodedPath
 
+	if strings.HasPrefix(path, "http") {
+		return path, nil
+	}
+
 	path = filepath.FromSlash(path)
 
 	if runtime.GOOS == "windows" {
