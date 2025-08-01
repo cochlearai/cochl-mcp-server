@@ -122,7 +122,7 @@ func NewMockCaption() *MockCaption {
 	return &MockCaption{}
 }
 
-func (m *MockCaption) Inference(contentType, filePath string) (*RespCaptionInference, error) {
+func (m *MockCaption) Inference(contentType, fileName string, audioData []byte) (*RespCaptionInference, error) {
 	if shouldCaptionError {
 		return nil, fmt.Errorf("caption inference error")
 	}

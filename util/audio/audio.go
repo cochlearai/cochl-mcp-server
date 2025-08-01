@@ -3,9 +3,16 @@ package audio
 import (
 	"encoding/binary"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"resty.dev/v3"
+
+	"github.com/cochlearai/cochl-mcp-server/util"
+	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
 type AudioInfo struct {
@@ -15,78 +22,163 @@ type AudioInfo struct {
 	FileName string
 }
 
-func GetRawAudioData(filePath string) ([]byte, error) {
-	return os.ReadFile(filePath)
+// isHTTPURL checks if the given URL is HTTP or HTTPS
+func isHTTPURL(fileUrl string) bool {
+	return strings.HasPrefix(strings.ToLower(fileUrl), "http://") ||
+		strings.HasPrefix(strings.ToLower(fileUrl), "https://")
 }
 
-func GetAudioInfo(filePath string) (*AudioInfo, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
+// downloadFromHTTP downloads file from HTTP URL using resty
+func downloadFromHTTP(fileUrl string) ([]byte, string, error) {
+	// Check if it's a Google Drive URL and convert it
+	downloadURL := fileUrl
+	if util.IsGoogleDriveURL(fileUrl) {
+		convertedURL, err := util.ConvertGoogleDriveURL(fileUrl)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert Google Drive URL: %v", err)
+		}
+		downloadURL = convertedURL
+	} else if util.IsDropboxURL(fileUrl) {
+		convertedURL, err := util.ConvertDropboxURL(fileUrl)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert Dropbox URL: %v", err)
+		}
+		downloadURL = convertedURL
 	}
-	defer file.Close()
+
+	// Create resty client with timeout
+	client := resty.New().
+		SetTimeout(1 * time.Minute).
+		SetRetryCount(2).
+		SetRetryWaitTime(1 * time.Second)
+
+	// Use restcli to download the file
+	resp, err := restcli.Get(client, downloadURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download file: %v", err)
+	}
+
+	if !resp.IsSuccess() {
+		return nil, "", fmt.Errorf("HTTP error: %s", resp.Status())
+	}
+
+	// Get response body as bytes
+	data := resp.Bytes()
+
+	// Try to get format from Content-Type header
+	contentType := resp.Header().Get("Content-Type")
+	var format string
+	switch contentType {
+	case "audio/wav", "audio/wave":
+		format = "wav"
+	case "audio/mpeg", "audio/mp3":
+		format = "mp3"
+	case "audio/ogg", "application/ogg":
+		format = "ogg"
+	default:
+		parsedURL, err := url.Parse(fileUrl)
+		if err == nil {
+			cleanPath := parsedURL.Path
+			format = strings.ToLower(filepath.Ext(cleanPath))
+			if format != "" {
+				format = format[1:]
+			}
+		} else {
+			format = strings.ToLower(filepath.Ext(fileUrl))
+			if format != "" {
+				format = format[1:]
+			}
+		}
+	}
+	return data, format, nil
+}
+
+// GetAudioInfoAndData returns both audio info and raw data in a single file read
+func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, error) {
+	var (
+		rawData []byte
+		format  string
+		err     error
+	)
+
+	var fileName string
+
+	// Check if it's a remote HTTP URL or use the isRemote flag
+	if isHTTPURL(fileUrl) || isRemote {
+		rawData, format, err = downloadFromHTTP(fileUrl)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// no need to get filename from URL
+		fileName = fmt.Sprintf("audio-%d.%s", time.Now().UnixNano(), format)
+	} else {
+		// Read local file
+		rawData, err = os.ReadFile(fileUrl)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read file: %v", err)
+		}
+
+		// Get format from file extension for local files
+		format = strings.ToLower(filepath.Ext(fileUrl))
+		if format != "" {
+			format = format[1:] // Remove the dot
+		}
+
+		fileName = filepath.Base(fileUrl)
+	}
 
 	// Get file size
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file info: %v", err)
-	}
-	size := int(fileInfo.Size())
-
-	// Get format from file extension
-	format := strings.ToLower(filepath.Ext(filePath))
-	if format != "" {
-		format = format[1:] // Remove the dot
-	}
+	size := len(rawData)
 
 	var duration float64
 
-	// Process based on file format
+	// Process based on file format using raw data
 	switch format {
 	case "wav":
-		duration, err = getWAVDuration(file)
+		duration, err = getWAVDurationFromData(rawData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get WAV duration: %v", err)
+			return nil, nil, fmt.Errorf("failed to get WAV duration: %v", err)
 		}
 	case "mp3":
-		duration, err = getMP3Duration(file)
+		duration, err = getMP3DurationFromData(rawData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get MP3 duration: %v", err)
+			return nil, nil, fmt.Errorf("failed to get MP3 duration: %v", err)
 		}
 	case "ogg":
-		duration, err = getOggDuration(file)
+		duration, err = getOggDurationFromData(rawData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get OGG duration: %v", err)
+			return nil, nil, fmt.Errorf("failed to get OGG duration: %v", err)
 		}
 	default:
-		return nil, fmt.Errorf("unsupported audio format: %s", format)
+		return nil, nil, fmt.Errorf("unsupported audio format: %s", format)
 	}
 
-	return &AudioInfo{
+	info := &AudioInfo{
 		Duration: duration,
 		Size:     size,
 		Format:   format,
-		FileName: filepath.Base(filePath),
-	}, nil
+		FileName: fileName,
+	}
+
+	return info, rawData, nil
 }
 
-func getWAVDuration(file *os.File) (float64, error) {
-	// Read WAV header
-	header := make([]byte, 44)
-	if _, err := file.Read(header); err != nil {
-		return 0, fmt.Errorf("failed to read WAV header: %v", err)
+func getWAVDurationFromData(data []byte) (float64, error) {
+	if len(data) < 44 {
+		return 0, fmt.Errorf("file too small to be a valid WAV")
 	}
 
 	// Check WAV signature
-	if string(header[0:4]) != "RIFF" || string(header[8:12]) != "WAVE" {
+	if string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
 		return 0, fmt.Errorf("invalid WAV file")
 	}
 
 	// Get audio format data
-	chunkSize := binary.LittleEndian.Uint32(header[4:8])
-	sampleRate := binary.LittleEndian.Uint32(header[24:28])
-	bitsPerSample := binary.LittleEndian.Uint16(header[34:36])
-	numChannels := binary.LittleEndian.Uint16(header[22:24])
+	chunkSize := binary.LittleEndian.Uint32(data[4:8])
+	sampleRate := binary.LittleEndian.Uint32(data[24:28])
+	bitsPerSample := binary.LittleEndian.Uint16(data[34:36])
+	numChannels := binary.LittleEndian.Uint16(data[22:24])
 
 	// Calculate duration
 	bytesPerSample := bitsPerSample / 8
@@ -118,43 +210,28 @@ var mp3SampleRates = map[int]int{
 	2: 32000,
 }
 
-func getMP3Duration(file *os.File) (float64, error) {
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get file info: %v", err)
-	}
-
-	size := fileInfo.Size()
+func getMP3DurationFromData(data []byte) (float64, error) {
+	size := int64(len(data))
 	if size <= 128 {
 		return 0, fmt.Errorf("file too small to be a valid MP3")
 	}
 
-	header := make([]byte, 10)
-	_, err = file.ReadAt(header, 0)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read header: %v", err)
-	}
-
 	var offset int64 = 0
-	if string(header[0:3]) == "ID3" {
-		tagSize := int64(header[6]&0x7f)<<21 |
-			int64(header[7]&0x7f)<<14 |
-			int64(header[8]&0x7f)<<7 |
-			int64(header[9]&0x7f)
+	if len(data) >= 10 && string(data[0:3]) == "ID3" {
+		tagSize := int64(data[6]&0x7f)<<21 |
+			int64(data[7]&0x7f)<<14 |
+			int64(data[8]&0x7f)<<7 |
+			int64(data[9]&0x7f)
 		offset = tagSize + 10
 	}
 
-	frameHeader := make([]byte, 4)
 	var bitRate, sampleRate, frameSize int
 	var totalFrames int64
 	var isVBR bool
 	var prevBitRate int
 
 	for offset < size-4 {
-		_, err = file.ReadAt(frameHeader, offset)
-		if err != nil {
-			return 0, fmt.Errorf("failed to read frame header: %v", err)
-		}
+		frameHeader := data[offset : offset+4]
 
 		if frameHeader[0] == 0xff && (frameHeader[1]&0xe0) == 0xe0 {
 			version := (frameHeader[1] >> 3) & 0x03
@@ -197,26 +274,7 @@ func getMP3Duration(file *os.File) (float64, error) {
 	return duration, nil
 }
 
-func getOggDuration(file *os.File) (float64, error) {
-	// Get file size
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("error getting file info: %w", err)
-	}
-
-	// Read the entire file
-	data := make([]byte, fileInfo.Size())
-	_, err = file.Read(data)
-	if err != nil {
-		return 0, fmt.Errorf("error reading Ogg file: %w", err)
-	}
-
-	// Reset file position for future reads
-	_, err = file.Seek(0, 0)
-	if err != nil {
-		return 0, fmt.Errorf("error resetting file position: %w", err)
-	}
-
+func getOggDurationFromData(data []byte) (float64, error) {
 	// Search for the "OggS" signature and calculate the length
 	var length int64
 	for i := len(data) - 14; i >= 0 && length == 0; i-- {
