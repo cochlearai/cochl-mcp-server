@@ -16,7 +16,7 @@ go build -o cochl-mcp-server cmd/cochl-mcp-server/main.go
 
 # OR
 
-go install github.com/cochlearai/cochl-mcp-server/cmd/cochl-mcp-server@latest
+go install github.com/cochlearai/cochl-mcp-server/cmd/cochl-mcp-server@v0.0.2
 ```
 - Place the executable file in your system's `$PATH`
 
