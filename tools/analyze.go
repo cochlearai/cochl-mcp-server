@@ -48,9 +48,8 @@ func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			return mcp.NewToolResultErrorFromErr("failed to normalize file path", err), nil
 		}
 
-		//TODO: support remote file (http url)
 		// Get both audio info and raw data in a single file read
-		audioInfo, rawData, err := audio.GetAudioInfoAndData(normalizedPath)
+		audioInfo, rawData, err := audio.GetAudioInfoAndData(normalizedPath.Path, normalizedPath.IsRemote)
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("failed to get audio info and data", err), nil
 		}
@@ -132,12 +131,12 @@ func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 					return
 				}
 
-				captionResult, err := captionClient.Inference(audioInfo.Format, normalizedPath)
+				captionResult, err := captionClient.Inference(audioInfo.Format, audioInfo.FileName, rawData)
 				if err != nil {
 					captionErr = fmt.Errorf("failed to get caption: %w", err)
 					return
 				}
-				result.Caption = captionResult
+				result.Caption = captionResult.Caption
 			}()
 		}
 

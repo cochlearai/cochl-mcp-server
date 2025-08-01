@@ -20,7 +20,6 @@ Example: 'A woman speaks while a television plays in the background.'
 Please provide the URL to the file.
 Local file path is also supported.
 Supported formats: MP3, WAV, OGG
-Warning: Currently, only local file path is supported.
 Examples:
   - Remote URL: https://example.com/audio.mp3
   - Local file: /path/to/audio.mp3

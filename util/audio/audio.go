@@ -3,9 +3,16 @@ package audio
 import (
 	"encoding/binary"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"resty.dev/v3"
+
+	"github.com/cochlearai/cochl-mcp-server/util"
+	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
 type AudioInfo struct {
@@ -15,22 +22,107 @@ type AudioInfo struct {
 	FileName string
 }
 
-// GetAudioInfoAndData returns both audio info and raw data in a single file read
-func GetAudioInfoAndData(filePath string) (*AudioInfo, []byte, error) {
-	// Read the entire file once
-	rawData, err := os.ReadFile(filePath)
+// isHTTPURL checks if the given URL is HTTP or HTTPS
+func isHTTPURL(fileUrl string) bool {
+	return strings.HasPrefix(strings.ToLower(fileUrl), "http://") ||
+		strings.HasPrefix(strings.ToLower(fileUrl), "https://")
+}
+
+// downloadFromHTTP downloads file from HTTP URL using resty
+func downloadFromHTTP(fileUrl string) ([]byte, string, error) {
+	// Check if it's a Google Drive URL and convert it
+	downloadURL := fileUrl
+	if util.IsGoogleDriveURL(fileUrl) {
+		convertedURL, err := util.ConvertGoogleDriveURL(fileUrl)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert Google Drive URL: %v", err)
+		}
+		downloadURL = convertedURL
+	} else if util.IsDropboxURL(fileUrl) {
+		convertedURL, err := util.ConvertDropboxURL(fileUrl)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert Dropbox URL: %v", err)
+		}
+		downloadURL = convertedURL
+	}
+
+	// Create resty client with timeout
+	client := resty.New().
+		SetTimeout(1 * time.Minute).
+		SetRetryCount(2).
+		SetRetryWaitTime(1 * time.Second)
+
+	// Use restcli to download the file
+	resp, err := restcli.Get(client, downloadURL, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read file: %v", err)
+		return nil, "", fmt.Errorf("failed to download file: %v", err)
+	}
+
+	if !resp.IsSuccess() {
+		return nil, "", fmt.Errorf("HTTP error: %s", resp.Status())
+	}
+
+	// Get response body as bytes
+	data := resp.Bytes()
+
+	// Try to get format from Content-Type header
+	contentType := resp.Header().Get("Content-Type")
+	var format string
+	switch contentType {
+	case "audio/wav", "audio/wave":
+		format = "wav"
+	case "audio/mpeg", "audio/mp3":
+		format = "mp3"
+	case "audio/ogg", "application/ogg":
+		format = "ogg"
+	default:
+		parsedURL, err := url.Parse(fileUrl)
+		if err == nil {
+			cleanPath := parsedURL.Path
+			format = strings.ToLower(filepath.Ext(cleanPath))
+			if format != "" {
+				format = format[1:]
+			}
+		} else {
+			format = strings.ToLower(filepath.Ext(fileUrl))
+			if format != "" {
+				format = format[1:]
+			}
+		}
+	}
+	return data, format, nil
+}
+
+// GetAudioInfoAndData returns both audio info and raw data in a single file read
+func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, error) {
+	var (
+		rawData []byte
+		format  string
+		err     error
+	)
+
+	// Check if it's a remote HTTP URL or use the isRemote flag
+	if isHTTPURL(fileUrl) || isRemote {
+		rawData, format, err = downloadFromHTTP(fileUrl)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		// Read local file
+		rawData, err = os.ReadFile(fileUrl)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read file: %v", err)
+		}
+
+		// Get format from file extension for local files
+		format = strings.ToLower(filepath.Ext(fileUrl))
+		if format != "" {
+			format = format[1:] // Remove the dot
+		}
 	}
 
 	// Get file size
 	size := len(rawData)
-
-	// Get format from file extension
-	format := strings.ToLower(filepath.Ext(filePath))
-	if format != "" {
-		format = format[1:] // Remove the dot
-	}
 
 	var duration float64
 
@@ -55,11 +147,27 @@ func GetAudioInfoAndData(filePath string) (*AudioInfo, []byte, error) {
 		return nil, nil, fmt.Errorf("unsupported audio format: %s", format)
 	}
 
+	// Extract filename from URL
+	var fileName string
+	if isHTTPURL(fileUrl) || isRemote {
+		// For HTTP URLs, try to extract filename from URL path
+		parsedURL, err := url.Parse(fileUrl)
+		if err == nil && parsedURL.Path != "" {
+			fileName = filepath.Base(parsedURL.Path)
+		}
+		// If no proper filename from URL, create one based on format
+		if fileName == "" || fileName == "/" || fileName == "." {
+			fileName = fmt.Sprintf("audio.%s", format)
+		}
+	} else {
+		fileName = filepath.Base(fileUrl)
+	}
+
 	info := &AudioInfo{
 		Duration: duration,
 		Size:     size,
 		Format:   format,
-		FileName: filepath.Base(filePath),
+		FileName: fileName,
 	}
 
 	return info, rawData, nil

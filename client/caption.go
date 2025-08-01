@@ -9,7 +9,7 @@ import (
 )
 
 type Caption interface {
-	Inference(contentType, filePath string) (*RespCaptionInference, error)
+	Inference(contentType, fileName string, audioData []byte) (*RespCaptionInference, error)
 }
 
 type RespCaptionInference struct {
@@ -31,13 +31,16 @@ func NewCaption(key string, baseUrl, version string) *CaptionClient {
 	}
 }
 
-func (c *CaptionClient) Inference(contentType, filePath string) (*RespCaptionInference, error) {
+func (c *CaptionClient) Inference(contentType, fileName string, audioData []byte) (*RespCaptionInference, error) {
 	param := restcli.Params{
 		Formdata: map[string]string{
 			"content_type": "audio/" + contentType,
 		},
-		Files: map[string]string{
-			"file": filePath,
+		FileData: map[string]restcli.FileData{
+			"file": {
+				FileName: fileName,
+				Data:     audioData,
+			},
 		},
 	}
 
