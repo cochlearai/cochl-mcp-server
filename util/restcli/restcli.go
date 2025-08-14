@@ -1,6 +1,15 @@
 package restcli
 
-import "resty.dev/v3"
+import (
+	"bytes"
+
+	"resty.dev/v3"
+)
+
+type FileData struct {
+	FileName string
+	Data     []byte
+}
 
 type Params struct {
 	Header  map[string]string
@@ -9,7 +18,8 @@ type Params struct {
 
 	Formdata map[string]string
 
-	Files map[string]string // key is the name of the file, value is the path to the file
+	Files    map[string]string   // key is the name of the file, value is the path to the file
+	FileData map[string]FileData // key is the form field name, value contains filename and raw data
 }
 
 func Get(cli *resty.Client, url string, params *Params, result ...any) (*resty.Response, error) {
@@ -70,6 +80,12 @@ func genReq(cli *resty.Client, params *Params, result []any) *resty.Request {
 
 	if params.Files != nil {
 		req = req.SetFiles(params.Files)
+	}
+
+	if params.FileData != nil {
+		for fieldName, fileData := range params.FileData {
+			req = req.SetFileReader(fieldName, fileData.FileName, bytes.NewReader(fileData.Data))
+		}
 	}
 
 	if params.Formdata != nil {

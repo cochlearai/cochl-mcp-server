@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set at build time using ldflags
-var Version = "0.0.0"
+var Version = "HEAD"
 
 const (
 	_cochlSenseProjectKeyHeader = "X-Api-Key"
