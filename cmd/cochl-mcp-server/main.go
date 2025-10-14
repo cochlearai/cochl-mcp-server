@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -44,42 +43,25 @@ func newServer() *server.MCPServer {
 	return s
 }
 
-func run(transport, port string) error {
+func run() error {
 	s := newServer()
 
-	switch transport {
-	case "http":
-		srv := server.NewStreamableHTTPServer(s,
-			server.WithHTTPContextFunc(common.HttpContextFunc),
-		)
-		slog.Info("Starting Cochl MCP server using streamable http transport", "port", port)
-		return srv.Start(":" + port)
-
-	case "stdio":
-		srv := server.NewStdioServer(s)
-		srv.SetContextFunc(common.ExtractCochlApiClientFromEnv)
-		slog.Info("Starting Cochl MCP server using stdio transport")
-		return srv.Listen(context.Background(), os.Stdin, os.Stdout)
-
-	default:
-		return fmt.Errorf("invalid transport: %s", transport)
-	}
+	srv := server.NewStdioServer(s)
+	srv.SetContextFunc(common.ExtractCochlApiClientFromEnv)
+	slog.Info("Starting Cochl MCP server using stdio transport")
+	return srv.Listen(context.Background(), os.Stdin, os.Stdout)
 
 }
 
 func main() {
-	var transport string
-	flag.StringVar(&transport, "transport", "stdio", "transport (stdio or http)")
-	flag.StringVar(&transport, "t", "stdio", "transport (stdio or http)")
 	logLevel := flag.String("log-level", "info", "log level (debug, info, warn, error)")
-	port := flag.String("http-port", "8080", "port to listen on (required for streamable http transport)")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: parseLogLevel(*logLevel),
 	})))
 
-	if err := run(transport, *port); err != nil {
+	if err := run(); err != nil {
 		slog.Error("Server error", "error", err)
 		os.Exit(1)
 	}
