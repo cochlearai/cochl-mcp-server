@@ -11,7 +11,20 @@ import (
 
 	"github.com/cochlearai/cochl-mcp-server/common"
 	"github.com/cochlearai/cochl-mcp-server/tools"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func newMcpServer() *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "mcp-cochl",
+		Version: common.Version,
+	}, nil)
+
+	tool, handler := tools.AnalyzeAudioToolv2()
+	mcp.AddTool(server, tool, handler)
+	return server
+}
 
 func newServer() *server.MCPServer {
 	defaultOpts := []server.ServerOption{

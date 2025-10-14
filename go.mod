@@ -1,9 +1,10 @@
 module github.com/cochlearai/cochl-mcp-server
 
-go 1.23.11
+go 1.24
 
 require (
 	github.com/mark3labs/mcp-go v0.36.0
+	github.com/modelcontextprotocol/go-sdk v1.0.0
 	github.com/stretchr/testify v1.10.0
 	resty.dev/v3 v3.0.0-beta.3
 )
@@ -12,6 +13,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/google/jsonschema-go v0.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
