@@ -6,12 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/cochlearai/cochl-mcp-server/common"
 	"github.com/cochlearai/cochl-mcp-server/tools"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func newMcpServer() *mcp.Server {
@@ -20,37 +18,15 @@ func newMcpServer() *mcp.Server {
 		Version: common.Version,
 	}, nil)
 
-	tool, handler := tools.AnalyzeAudioToolv2()
+	tool, handler := tools.AnalyzeAudioTool()
 	mcp.AddTool(server, tool, handler)
 	return server
 }
 
-func newServer() *server.MCPServer {
-	defaultOpts := []server.ServerOption{
-		server.WithToolCapabilities(true),
-		server.WithResourceCapabilities(true, true),
-		server.WithLogging(),
-		server.WithRecovery(),
-	}
-
-	s := server.NewMCPServer(
-		"mcp-cochl",
-		common.Version,
-		defaultOpts...,
-	)
-
-	s.AddTool(tools.AnalyzeAudio())
-	return s
-}
-
 func run() error {
-	s := newServer()
-
-	srv := server.NewStdioServer(s)
-	srv.SetContextFunc(common.ExtractCochlApiClientFromEnv)
-	slog.Info("Starting Cochl MCP server using stdio transport")
-	return srv.Listen(context.Background(), os.Stdin, os.Stdout)
-
+	server := newMcpServer()
+	ctx := common.ExtractCochlApiClientFromEnv(context.Background())
+	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
 func main() {
