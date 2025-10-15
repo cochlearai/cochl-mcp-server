@@ -2,13 +2,11 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/cochlearai/cochl-mcp-server/client"
 	"github.com/cochlearai/cochl-mcp-server/common"
@@ -17,44 +15,41 @@ import (
 )
 
 type AnalyzeResult struct {
-	Sense   any `json:"sense,omitempty"`
-	Caption any `json:"caption,omitempty"`
+	Sense   any `json:"sense,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
+	Caption any `json:"caption,omitempty" jsonschema:"Natural language caption summarizing the audio file"`
 }
 
-func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
-	tool = mcp.NewTool("analyze_audio",
-		mcp.WithDescription(_analyzeAudioDescWithCaption),
-		mcp.WithString(
-			"file_url",
-			mcp.Required(),
-			mcp.Description(_fileUrlDesc),
-		),
-		mcp.WithBoolean(
-			"with_caption",
-			mcp.Description(_withCaptionDesc),
-			mcp.DefaultBool(false),
-		),
-	)
+type AnalyzeAudioParams struct {
+	FileUrl     string `json:"file_url" jsonschema:"Audio file URL or local path (MP3/WAV/OGG)"`
+	WithCaption bool   `json:"with_caption" jsonschema:"Generate a natural language caption for the audio file (default: false)"`
+}
 
-	handler = func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		fileUrl, err := request.RequireString("file_url")
-		if err != nil {
-			return mcp.NewToolResultErrorFromErr("missing or invalid 'file_url' parameter", err), nil
+func AnalyzeAudioTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeAudioParams, *AnalyzeResult]) {
+	tool = &mcp.Tool{
+		Name:        "analyze_audio",
+		Description: _analyzeAudioDescWithCaption,
+	}
+
+	handler = func(ctx context.Context, req *mcp.CallToolRequest, input *AnalyzeAudioParams) (*mcp.CallToolResult, *AnalyzeResult, error) {
+		if input == nil {
+			return nil, nil, fmt.Errorf("input is required")
+		}
+
+		if input.FileUrl == "" {
+			return nil, nil, fmt.Errorf("file_url is required")
 		}
 
 		// normalize path
-		normalizedPath, err := util.NormalizePath(fileUrl)
+		normalizedPath, err := util.NormalizePath(input.FileUrl)
 		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to normalize file path", err), nil
+			return nil, nil, fmt.Errorf("failed to normalize file path: %w", err)
 		}
 
 		// Get both audio info and raw data in a single file read
 		audioInfo, rawData, err := audio.GetAudioInfoAndData(normalizedPath.Path, normalizedPath.IsRemote)
 		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to get audio info and data", err), nil
+			return nil, nil, fmt.Errorf("failed to get audio info and data: %w", err)
 		}
-
-		withCaption, _ := request.RequireBool("with_caption")
 
 		var (
 			result AnalyzeResult
@@ -121,7 +116,7 @@ func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 			}
 		}()
 
-		if withCaption {
+		if input.WithCaption {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -143,15 +138,9 @@ func AnalyzeAudio() (tool mcp.Tool, handler server.ToolHandlerFunc) {
 		wg.Wait()
 
 		if senseErr != nil || captionErr != nil {
-			return mcp.NewToolResultErrorf("sense audio failed: %v, caption audio failed: %v", senseErr, captionErr), nil
+			return nil, nil, fmt.Errorf("sense audio failed: %v, caption audio failed: %v", senseErr, captionErr)
 		}
-
-		jsonResult, err := json.Marshal(result)
-		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to marshal analyze result", err), nil
-		}
-
-		return mcp.NewToolResultText(string(jsonResult)), nil
+		return nil, &result, nil
 	}
 
 	return tool, handler

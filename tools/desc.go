@@ -15,19 +15,4 @@ The analysis result includes:
 Example: Detects 'Water_run' from 0-2s, 'Laughter' from 5-7s, etc.
 Example: 'A woman speaks while a television plays in the background.'
 `
-
-	_fileUrlDesc = `
-Please provide the URL to the file.
-Local file path is also supported.
-Supported formats: MP3, WAV, OGG
-Examples:
-  - Remote URL: https://example.com/audio.mp3
-  - Local file: /path/to/audio.mp3
-  - Windows path: C:\Users\username\audio.wav
-`
-
-	_withCaptionDesc = `
-Please provide whether to generate a caption for the audio file.
-Default: false
-`
 )

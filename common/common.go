@@ -3,10 +3,7 @@ package common
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
-
-	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/cochlearai/cochl-mcp-server/client"
 )
@@ -15,9 +12,6 @@ import (
 var Version = "HEAD"
 
 const (
-	_cochlSenseProjectKeyHeader = "X-Api-Key"
-	_cochlSenseBaseURLHeader    = "X-Base-Url"
-
 	_cochlSenseProjectKeyEnvVar = "COCHL_SENSE_PROJECT_KEY"
 	_cochlSenseBaseURLEnvVar    = "COCHL_SENSE_BASE_URL"
 
@@ -27,7 +21,7 @@ const (
 type senseApiClientKey struct{}
 type captionApiClientKey struct{}
 
-var ExtractCochlApiClientFromEnv server.StdioContextFunc = func(ctx context.Context) context.Context {
+var ExtractCochlApiClientFromEnv = func(ctx context.Context) context.Context {
 	apiKey := os.Getenv(_cochlSenseProjectKeyEnvVar)
 	baseUrl := os.Getenv(_cochlSenseBaseURLEnvVar)
 	if baseUrl == "" {
@@ -44,30 +38,6 @@ var ExtractCochlApiClientFromEnv server.StdioContextFunc = func(ctx context.Cont
 
 	return ctx
 }
-
-var ExtractCochlApiClientFromHeader server.HTTPContextFunc = func(ctx context.Context, r *http.Request) context.Context {
-	apiKey := r.Header.Get(_cochlSenseProjectKeyHeader)
-	baseUrl := r.Header.Get(_cochlSenseBaseURLHeader)
-
-	if baseUrl == "" {
-		baseUrl = _defaultBaseURL
-	}
-
-	senseClient := client.NewSense(apiKey, baseUrl, Version)
-	captionClient := client.NewCaption(apiKey, baseUrl, Version)
-
-	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)
-	ctx = context.WithValue(ctx, captionApiClientKey{}, captionClient)
-
-	slog.Debug("Cochl api client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
-
-	return ctx
-}
-
-var (
-	HttpContextFunc  server.HTTPContextFunc  = ExtractCochlApiClientFromHeader
-	StdioContextFunc server.StdioContextFunc = ExtractCochlApiClientFromEnv
-)
 
 func CaptionClientFromContext(ctx context.Context) client.Caption {
 	c, ok := ctx.Value(captionApiClientKey{}).(client.Caption)

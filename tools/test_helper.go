@@ -1,34 +1,19 @@
 package tools
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func getTextResult(t *testing.T, result *mcp.CallToolResult) mcp.TextContent {
+func parseParams[T any](t *testing.T, args map[string]any, target T) (T, error) {
 	t.Helper()
-	assert.NotNil(t, result)
-	require.Len(t, result.Content, 1)
-	require.IsType(t, mcp.TextContent{}, result.Content[0])
-	textContent := result.Content[0].(mcp.TextContent)
-	assert.Equal(t, "text", textContent.Type)
-	return textContent
-}
-
-func createMCPRequest(args any) mcp.CallToolRequest {
-	return mcp.CallToolRequest{
-		Params: struct {
-			Name      string    `json:"name"`
-			Arguments any       `json:"arguments,omitempty"`
-			Meta      *mcp.Meta `json:"_meta,omitempty"`
-		}{
-			Arguments: args,
-		},
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return target, err
 	}
+	err = json.Unmarshal(argsJSON, target)
+	return target, err
 }
 
 func getAbsPath(t *testing.T, relativePath string) string {
