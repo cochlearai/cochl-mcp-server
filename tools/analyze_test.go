@@ -90,7 +90,7 @@ func Test_Analyze(t *testing.T) {
 			name:               "sense success but caption error",
 			args:               map[string]any{"file_url": getAbsPath(t, "../testdata/wav-test.wav"), "with_caption": true},
 			expectError:        true,
-			expectedErrMsg:     "caption audio failed",
+			expectedErrMsg:     "caption analysis",
 			withCaption:        true,
 			shouldCaptionError: true,
 		},
@@ -98,7 +98,7 @@ func Test_Analyze(t *testing.T) {
 			name:                     "sense error and caption success",
 			args:                     map[string]any{"file_url": getAbsPath(t, "../testdata/wav-test.wav"), "with_caption": true},
 			expectError:              true,
-			expectedErrMsg:           "sense audio failed",
+			expectedErrMsg:           "sense analysis",
 			withCaption:              true,
 			shouldCreateSessionError: true,
 		},
@@ -106,7 +106,7 @@ func Test_Analyze(t *testing.T) {
 			name:                     "both sense and caption error",
 			args:                     map[string]any{"file_url": getAbsPath(t, "../testdata/wav-test.wav"), "with_caption": true},
 			expectError:              true,
-			expectedErrMsg:           "sense audio failed",
+			expectedErrMsg:           "analysis failed with 2 error(s)",
 			withCaption:              true,
 			shouldCreateSessionError: true,
 			shouldCaptionError:       true,
@@ -128,7 +128,7 @@ func Test_Analyze(t *testing.T) {
 			// Set caption errors
 			client.SetShouldMockCaptionError(tc.shouldCaptionError)
 
-			params, parseErr := parseParams(t, tc.args, &AnalyzeAudioParams{})
+			params, parseErr := parseParams(t, tc.args, &AnalyzeAudioInput{})
 
 			// If parameter parsing fails, check if we expected an error
 			if parseErr != nil {
