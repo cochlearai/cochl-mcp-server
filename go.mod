@@ -1,6 +1,6 @@
 module github.com/cochlearai/cochl-mcp-server
 
-go 1.24.0
+go 1.24.9
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.0.0
