@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,12 +11,10 @@ import (
 )
 
 func Test_Analyze(t *testing.T) {
-	tool, handlerFunc := AnalyzeAudio()
+	tool, handlerFunc := AnalyzeAudioTool()
 
 	assert.Equal(t, "analyze_audio", tool.Name)
 	assert.NotEmpty(t, tool.Description)
-	assert.Contains(t, tool.InputSchema.Properties, "file_url")
-	assert.Contains(t, tool.InputSchema.Properties, "with_caption")
 
 	ctx := common.NewTestContext("analyze_audio")
 
@@ -41,7 +38,7 @@ func Test_Analyze(t *testing.T) {
 			name:           "invalid file_url parameter",
 			args:           map[string]any{"file_url": 123},
 			expectError:    true,
-			expectedErrMsg: "missing or invalid",
+			expectedErrMsg: "cannot unmarshal number",
 		},
 		{
 			name:           "nonexistent file",
@@ -131,34 +128,37 @@ func Test_Analyze(t *testing.T) {
 			// Set caption errors
 			client.SetShouldMockCaptionError(tc.shouldCaptionError)
 
-			request := createMCPRequest(tc.args)
+			params, parseErr := parseParams(t, tc.args, &AnalyzeAudioParams{})
 
-			result, _ := handlerFunc(ctx, request)
+			// If parameter parsing fails, check if we expected an error
+			if parseErr != nil {
+				if tc.expectError {
+					assert.Contains(t, parseErr.Error(), tc.expectedErrMsg)
+					return
+				}
+				t.Fatalf("unexpected parse error: %v", parseErr)
+			}
+
+			_, resultData, err := handlerFunc(ctx, nil, params)
 
 			if tc.expectError {
-				assert.True(t, result.IsError)
-				textContent := getTextResult(t, result)
-				assert.Contains(t, textContent.Text, tc.expectedErrMsg)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedErrMsg)
 				return
 			}
 
-			require.NotNil(t, result)
-			assert.False(t, result.IsError)
-
-			textContent := getTextResult(t, result)
-			var analyzeResult AnalyzeResult
-			err := json.Unmarshal([]byte(textContent.Text), &analyzeResult)
 			require.NoError(t, err)
+			require.NotNil(t, resultData)
 
 			// Sense result should always be present
-			assert.NotNil(t, analyzeResult.Sense, "Sense result should always be present")
+			assert.NotNil(t, resultData.Sense, "Sense result should always be present")
 
 			// Caption result validation
 			if tc.withCaption {
-				assert.NotNil(t, analyzeResult.Caption, "Caption result should be present when with_caption is true")
+				assert.NotNil(t, resultData.Caption, "Caption result should be present when with_caption is true")
 			} else {
 				// Caption should be nil or omitted when with_caption is false
-				assert.Nil(t, analyzeResult.Caption, "Caption result should be nil when with_caption is false")
+				assert.Nil(t, resultData.Caption, "Caption result should be nil when with_caption is false")
 			}
 		})
 	}
