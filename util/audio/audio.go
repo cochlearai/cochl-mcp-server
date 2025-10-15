@@ -182,3 +182,51 @@ func getAudioDurationWithFFProbe(filePath string) (float64, error) {
 
 	return duration, nil
 }
+
+// SplitAudioIntoChunks splits an audio file into 10-second chunks using ffmpeg
+// Returns a slice of output file paths
+func SplitAudioIntoChunks(inputPath string, outputDir string, duration float64, chunkDuration int) ([]string, error) {
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %v", err)
+	}
+
+	// Get the file extension
+	ext := filepath.Ext(inputPath)
+
+	// Create output pattern
+	outputPattern := filepath.Join(outputDir, fmt.Sprintf("chunk_%%03d%s", ext))
+
+	// Run ffmpeg command to split audio
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-f", "segment",
+		"-segment_time", fmt.Sprintf("%d", chunkDuration),
+		"-c", "copy",
+		"-reset_timestamps", "1",
+		outputPattern)
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg command failed: %v", err)
+	}
+
+	// Calculate expected number of chunks
+	numChunks := int(duration/float64(chunkDuration)) + 1
+
+	// Collect output file paths
+	var outputFiles []string
+	for i := range numChunks {
+		fileName := fmt.Sprintf("chunk_%03d%s", i, ext)
+		filePath := filepath.Join(outputDir, fileName)
+		// Check if file exists
+		if _, err := os.Stat(filePath); err == nil {
+			outputFiles = append(outputFiles, filePath)
+		}
+	}
+
+	if len(outputFiles) == 0 {
+		return nil, fmt.Errorf("no output files were created")
+	}
+
+	return outputFiles, nil
+}
