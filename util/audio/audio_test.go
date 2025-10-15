@@ -46,11 +46,11 @@ func TestGetAudioInfoAndData(t *testing.T) {
 			shouldFail: true,
 		},
 		{
-			name:             "HTTP URL test (optional)",
-			path:             "https://drive.google.com/file/d/11NG67v0jlYqh8T2oCh0nlL8z5WKNT26h/view?usp=drive_link",
+			name:             "HTTP URL test",
+			path:             "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_100KB_MP3.mp3",
 			expectedFormat:   "mp3",
-			expectedDuration: 0,
-			skipOnError:      true,
+			expectedDuration: 3,    // Approximately 3 seconds
+			skipOnError:      true, // Skip if network is unavailable
 		},
 	}
 
@@ -80,9 +80,6 @@ func TestGetAudioInfoAndData(t *testing.T) {
 			if tt.expectedDuration > 0 {
 				assert.Equal(t, tt.expectedDuration, int(info.Duration))
 			}
-
-			t.Logf("Path: %s, Duration: %.2fs, Size: %d bytes, Format: %s, FileName: %s",
-				tt.path, info.Duration, info.Size, info.Format, info.FileName)
 		})
 	}
 }
@@ -116,12 +113,7 @@ func TestSplitAudioIntoChunks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			outputDir := t.TempDir()
 
-			duration, err := getAudioDurationWithFFProbe(tt.inputPath)
-			if !tt.shouldFail && err != nil {
-				t.Skipf("ffprobe not installed: %v", err)
-			}
-
-			chunks, err := SplitAudioIntoChunks(tt.inputPath, outputDir, duration, tt.chunkDuration)
+			chunks, err := SplitAudioIntoChunks(tt.inputPath, outputDir, tt.chunkDuration)
 
 			if tt.shouldFail {
 				assert.Error(t, err)

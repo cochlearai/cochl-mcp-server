@@ -105,9 +105,11 @@ func downloadFromHTTP(fileUrl string) ([]byte, string, error) {
 // GetAudioInfoAndData returns both audio info and raw data in a single file read
 func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, error) {
 	var (
-		rawData []byte
-		format  string
-		err     error
+		rawData    []byte
+		format     string
+		err        error
+		probeInput string // Path for ffprobe (either original path or temp file)
+		tempFile   *os.File
 	)
 
 	var fileName string
@@ -121,6 +123,22 @@ func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, err
 
 		// no need to get filename from URL
 		fileName = fmt.Sprintf("audio-%d.%s", time.Now().UnixNano(), format)
+
+		// Create temporary file for ffprobe
+		tempFile, err = os.CreateTemp("", fmt.Sprintf("audio-*.%s", format))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create temp file: %v", err)
+		}
+		defer os.Remove(tempFile.Name())
+		defer tempFile.Close()
+
+		// Write downloaded data to temp file
+		if _, err = tempFile.Write(rawData); err != nil {
+			return nil, nil, fmt.Errorf("failed to write temp file: %v", err)
+		}
+
+		// Use temp file for ffprobe
+		probeInput = tempFile.Name()
 	} else {
 		// Read local file
 		rawData, err = os.ReadFile(fileUrl)
@@ -135,12 +153,13 @@ func GetAudioInfoAndData(fileUrl string, isRemote bool) (*AudioInfo, []byte, err
 		}
 
 		fileName = filepath.Base(fileUrl)
+		probeInput = fileUrl
 	}
 
 	// Get file size
 	size := len(rawData)
 
-	duration, err := getAudioDurationWithFFProbe(fileUrl)
+	duration, err := getAudioDurationWithFFProbe(probeInput)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get audio duration: %v", err)
 	}
@@ -183,9 +202,9 @@ func getAudioDurationWithFFProbe(filePath string) (float64, error) {
 	return duration, nil
 }
 
-// SplitAudioIntoChunks splits an audio file into 10-second chunks using ffmpeg
+// SplitAudioIntoChunks splits an audio file into chunks using ffmpeg
 // Returns a slice of output file paths
-func SplitAudioIntoChunks(inputPath string, outputDir string, duration float64, chunkDuration int) ([]string, error) {
+func SplitAudioIntoChunks(inputPath string, outputDir string, chunkDuration int) ([]string, error) {
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
@@ -210,18 +229,11 @@ func SplitAudioIntoChunks(inputPath string, outputDir string, duration float64, 
 		return nil, fmt.Errorf("ffmpeg command failed: %v", err)
 	}
 
-	// Calculate expected number of chunks
-	numChunks := int(duration/float64(chunkDuration)) + 1
-
-	// Collect output file paths
-	var outputFiles []string
-	for i := range numChunks {
-		fileName := fmt.Sprintf("chunk_%03d%s", i, ext)
-		filePath := filepath.Join(outputDir, fileName)
-		// Check if file exists
-		if _, err := os.Stat(filePath); err == nil {
-			outputFiles = append(outputFiles, filePath)
-		}
+	// Find all generated chunk files using glob pattern
+	pattern := filepath.Join(outputDir, fmt.Sprintf("chunk_*%s", ext))
+	outputFiles, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find output files: %v", err)
 	}
 
 	if len(outputFiles) == 0 {
