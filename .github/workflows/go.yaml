@@ -2,20 +2,13 @@ name: Go
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [dev]
   push:
-    branches:
-      - main
+    branches: [dev]
 
 jobs:
   go-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -25,6 +18,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Download dependencies
         run: go mod download
