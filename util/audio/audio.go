@@ -16,11 +16,18 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
+// AudioInfo contains basic information about an audio file
 type AudioInfo struct {
-	Duration float64
-	Size     int
-	Format   string
-	FileName string
+	Duration float64 // Duration in seconds
+	Size     int     // Size in bytes
+	Format   string  // Audio format (mp3, wav, ogg, etc.)
+	FileName string  // Original file name
+}
+
+// ChunkInfo represents information about a single audio chunk
+type ChunkInfo struct {
+	Index    int    // Chunk index (0-based)
+	FilePath string // Path to chunk file
 }
 
 // FFProbe output structure
@@ -202,9 +209,32 @@ func getAudioDurationWithFFProbe(filePath string) (float64, error) {
 	return duration, nil
 }
 
-// SplitAudioIntoChunks splits an audio file into chunks using ffmpeg
-// Returns a slice of output file paths
-func SplitAudioIntoChunks(inputPath string, outputDir string, chunkDuration int) ([]string, error) {
+// SaveRawDataToTempFile saves raw audio data to a temporary file
+// If dir is empty, uses system temp directory. Otherwise saves to the specified directory.
+// Returns the temp file path. Cleanup is caller's responsibility.
+func SaveRawDataToTempFile(rawData []byte, format, dir string) (string, error) {
+	tempFile, err := os.CreateTemp(dir, fmt.Sprintf("audio-*.%s", format))
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	if _, err := tempFile.Write(rawData); err != nil {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	return tempFile.Name(), nil
+}
+
+// SplitAudioIntoChunks splits an audio file into chunks using ffmpeg.
+// chunkDuration is in seconds. Returns a sorted slice of output file paths.
+func SplitAudioIntoChunks(inputPath, outputDir string, chunkDuration int) ([]string, error) {
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
