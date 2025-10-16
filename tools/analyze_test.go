@@ -151,14 +151,14 @@ func Test_Analyze(t *testing.T) {
 			require.NotNil(t, resultData)
 
 			// Sense result should always be present
-			assert.NotNil(t, resultData.Sense, "Sense result should always be present")
+			assert.NotNil(t, resultData.Senses, "Sense result should always be present")
 
 			// Caption result validation
 			if tc.withCaption {
-				assert.NotNil(t, resultData.Caption, "Caption result should be present when with_caption is true")
+				assert.NotNil(t, resultData.Captions, "Caption result should be present when with_caption is true")
 			} else {
 				// Caption should be nil or omitted when with_caption is false
-				assert.Nil(t, resultData.Caption, "Caption result should be nil when with_caption is false")
+				assert.Nil(t, resultData.Captions, "Caption result should be nil when with_caption is false")
 			}
 		})
 	}

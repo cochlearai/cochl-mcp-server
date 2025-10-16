@@ -29,12 +29,12 @@ const (
 )
 
 type AnalyzeAudioOutput struct {
-	Sense   any `json:"sense,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
-	Caption any `json:"caption,omitempty" jsonschema:"Natural language caption summarizing the audio file"`
+	Senses   any `json:"senses,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
+	Captions any `json:"captions,omitempty" jsonschema:"Natural language caption summarizing the audio file"`
 }
 
 type AnalyzeAudioInput struct {
-	FileUrl     string `json:"file_url" jsonschema:"Audio file URL or local path (MP3/WAV/OGG)"`
+	FileUrl     string `json:"file_url" jsonschema:"Audio remote URL or local file absolute path (MP3/WAV/OGG)"`
 	WithCaption bool   `json:"with_caption" jsonschema:"Generate a natural language caption for the audio file (default: false)"`
 }
 
@@ -116,7 +116,7 @@ func runConcurrentAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawD
 			return
 		}
 		mu.Lock()
-		result.Sense = senseData
+		result.Senses = senseData
 		mu.Unlock()
 	}()
 
@@ -133,7 +133,7 @@ func runConcurrentAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawD
 				return
 			}
 			mu.Lock()
-			result.Caption = caption
+			result.Captions = caption
 			mu.Unlock()
 		}()
 	}
