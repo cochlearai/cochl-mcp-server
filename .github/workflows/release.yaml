@@ -1,4 +1,4 @@
-name: Release
+name: Release binary
 
 on:
   release:
@@ -13,22 +13,22 @@ jobs:
         include:
           - build-goos: linux
             build-arch: amd64
-            ext: ''
+            ext: ""
           - build-goos: darwin
             build-arch: arm64
-            ext: ''
+            ext: ""
           - build-goos: darwin
             build-arch: amd64
-            ext: ''
+            ext: ""
           - build-goos: windows
             build-arch: amd64
-            ext: '.exe'
+            ext: ".exe"
 
     steps:
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23.x
+          go-version-file: "go.mod"
 
       - name: Checkout
         uses: actions/checkout@v4

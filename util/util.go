@@ -29,12 +29,26 @@ func NormalizePath(path string) (*FilePath, error) {
 		}, nil
 	}
 
-	path = filepath.FromSlash(path)
+	// Check if input is a Windows-style path (C:\ or C:/)
+	isWindowsPath := regexp.MustCompile(`^[A-Za-z]:[/\\]`).MatchString(path)
 
 	if runtime.GOOS == "windows" {
+		// Running on Windows (native binary)
+		path = filepath.FromSlash(path)
+
 		if strings.HasPrefix(path, `\`) || strings.HasPrefix(path, `/`) {
 			path = strings.TrimLeft(path, `\/`)
 		}
+	} else if runtime.GOOS == "linux" && isWindowsPath {
+		// Running on Linux (Docker) with Windows path
+		// Convert C:\path\to\file -> /C/path/to/file
+		driveLetter := strings.ToUpper(string(path[0]))
+		pathWithoutDrive := path[2:] // Skip "C:"
+		pathWithoutDrive = strings.ReplaceAll(pathWithoutDrive, `\`, `/`)
+		path = "/" + driveLetter + pathWithoutDrive
+	} else {
+		// Linux path on Linux
+		path = filepath.FromSlash(path)
 	}
 
 	path = filepath.Clean(path)
