@@ -1,18 +1,30 @@
 package tools
 
 const (
-	_analyzeAudioDescWithCaption = `
-Analyze an audio file to detect and segment environmental sounds and events over time.
-This tool also generates a concise natural language caption.
-This tool provides a detailed timeline, dividing the audio into temporal segments.
-It identifies which sounds or events occur in each segment, along with their probability scores.
-Use this tool to understand what kinds of sounds (e.g., 'Water_run', 'Laughter', 'Speech') are present at specific times in the audio.
-The analysis result includes:
-  - Temporal segments with start and end times
-  - Tags for each segment indicating the detected sounds/events
-  - Probability scores for each detected tag
-  - Caption summarizing the likely situation or scene
-Example: Detects 'Water_run' from 0-2s, 'Laughter' from 5-7s, etc.
-Example: 'A woman speaks while a television plays in the background.'
+	_analyzeMediaDesc = `
+Analyze audio or video files to detect sounds, events, and visual content.
+
+For AUDIO files (MP3/WAV/OGG):
+  - Detects and segments environmental sounds and events over time
+  - Provides temporal segments with start/end times and probability scores
+  - Optionally generates a natural language caption summarizing the audio
+  Example sounds: 'Water_run', 'Laughter', 'Speech', 'Music', etc.
+
+For VIDEO files (MP4/WebM/AVI):
+  - Extracts and analyzes audio track (same as audio analysis)
+  - Extracts frames uniformly across the video and analyzes all frames in a single batch using AI (LLaVA)
+  - Generates descriptions for each frame and an overall video summary
+  - Processes audio and video analysis concurrently for efficiency
+
+Input parameters:
+  - file_url: Path or URL to the media file
+  - with_caption: Generate audio caption (default: false)
+  - max_frames: Maximum number of frames to extract for video, uniformly sampled (default: 8, max: 16)
+
+Output includes:
+  - media_type: "audio" or "video"
+  - sense: Temporal sound/event detection results
+  - caption: Natural language audio caption (if requested)
+  - video_caption: Frame-by-frame descriptions and summary (video only)
 `
 )

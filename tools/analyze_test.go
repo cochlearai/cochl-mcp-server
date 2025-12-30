@@ -10,13 +10,13 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/common"
 )
 
-func Test_Analyze(t *testing.T) {
-	tool, handlerFunc := AnalyzeAudioTool()
+func Test_AnalyzeMedia(t *testing.T) {
+	tool, handlerFunc := AnalyzeMediaTool()
 
-	assert.Equal(t, "analyze_audio", tool.Name)
+	assert.Equal(t, "analyze_media", tool.Name)
 	assert.NotEmpty(t, tool.Description)
 
-	ctx := common.NewTestContext("analyze_audio")
+	ctx := common.NewTestContext("analyze_media")
 
 	testCases := []struct {
 		name            string
@@ -128,7 +128,7 @@ func Test_Analyze(t *testing.T) {
 			// Set caption errors
 			client.SetShouldMockCaptionError(tc.shouldCaptionError)
 
-			params, parseErr := parseParams(t, tc.args, &AnalyzeAudioInput{})
+			params, parseErr := parseParams(t, tc.args, &AnalyzeInput{})
 
 			// If parameter parsing fails, check if we expected an error
 			if parseErr != nil {

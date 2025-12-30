@@ -131,3 +131,47 @@ func (m *MockCaption) Inference(contentType, fileName string, audioData []byte) 
 		Caption: "This is a mock caption.",
 	}, nil
 }
+
+// Mock implementation for Ollama interface
+var (
+	shouldOllamaError bool = false
+)
+
+func ResetMockOllamaErrors() {
+	shouldOllamaError = false
+}
+
+func SetShouldMockOllamaError(v bool) {
+	shouldOllamaError = v
+}
+
+type MockOllama struct {
+	Model string
+}
+
+func NewMockOllama() *MockOllama {
+	return &MockOllama{
+		Model: "llava",
+	}
+}
+
+func (m *MockOllama) GetModel() string {
+	return m.Model
+}
+
+func (m *MockOllama) GenerateWithImages(prompt string, images [][]byte) (*OllamaResponse, error) {
+	if shouldOllamaError {
+		return nil, fmt.Errorf("ollama generate error")
+	}
+
+	response := "This is a mock video frame description."
+	if len(images) == 0 {
+		response = "This is a mock video summary based on frame descriptions."
+	}
+
+	return &OllamaResponse{
+		Model:    m.Model,
+		Response: response,
+		Done:     true,
+	}, nil
+}
