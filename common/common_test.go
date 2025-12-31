@@ -28,3 +28,13 @@ func Test_SenseClientFromContext(t *testing.T) {
 	nilSense := SenseClientFromContext(nilCtx)
 	assert.Nil(t, nilSense)
 }
+
+func Test_OllamaClientFromContext(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ollamaClientKey{}, &client.MockOllama{})
+	ollama := OllamaClientFromContext(ctx)
+	assert.NotNil(t, ollama)
+
+	nilCtx := context.Background()
+	nilOllama := OllamaClientFromContext(nilCtx)
+	assert.Nil(t, nilOllama)
+}

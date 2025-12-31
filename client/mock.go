@@ -6,11 +6,13 @@ import (
 	"fmt"
 )
 
+// randomHex16 generates a random 16-byte hex string for mock session IDs.
+// Falls back to a fixed value if crypto/rand fails (should not happen in practice).
 func randomHex16() string {
 	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(err)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback for mock purposes only - crypto/rand failure is extremely rare
+		return "0000000000000000"
 	}
 	return hex.EncodeToString(b)
 }
@@ -129,5 +131,49 @@ func (m *MockCaption) Inference(contentType, fileName string, audioData []byte) 
 
 	return &RespCaptionInference{
 		Caption: "This is a mock caption.",
+	}, nil
+}
+
+// Mock implementation for Ollama interface
+var (
+	shouldOllamaError bool = false
+)
+
+func ResetMockOllamaErrors() {
+	shouldOllamaError = false
+}
+
+func SetShouldMockOllamaError(v bool) {
+	shouldOllamaError = v
+}
+
+type MockOllama struct {
+	Model string
+}
+
+func NewMockOllama() *MockOllama {
+	return &MockOllama{
+		Model: "llava",
+	}
+}
+
+func (m *MockOllama) GetModel() string {
+	return m.Model
+}
+
+func (m *MockOllama) GenerateWithImages(prompt string, images [][]byte) (*OllamaResponse, error) {
+	if shouldOllamaError {
+		return nil, fmt.Errorf("ollama generate error")
+	}
+
+	response := "This is a mock video frame description."
+	if len(images) == 0 {
+		response = "This is a mock video summary based on frame descriptions."
+	}
+
+	return &OllamaResponse{
+		Model:    m.Model,
+		Response: response,
+		Done:     true,
 	}, nil
 }

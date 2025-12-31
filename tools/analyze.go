@@ -2,9 +2,13 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,50 +18,61 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/common"
 	"github.com/cochlearai/cochl-mcp-server/util"
 	"github.com/cochlearai/cochl-mcp-server/util/audio"
+	"github.com/cochlearai/cochl-mcp-server/util/video"
 )
 
 const (
-	// Timing and concurrency
 	_inferenceTimeout         = 30 * time.Second
 	_pollingInterval          = 2 * time.Second
-	_durationForSingleCaption = 10 // 10 seconds
-	_maxConcurrentChunks      = 5  // Limit concurrent processing
+	_durationForSingleCaption = 10 // seconds
+	_maxConcurrentChunks      = 5
 
-	// Caption processing
 	_captionTempDirPattern = "audio-chunks-*"
 	_captionChunkDirName   = "chunks"
 )
 
-type AnalyzeAudioOutput struct {
-	Senses   any `json:"senses,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
-	Captions any `json:"captions,omitempty" jsonschema:"Natural language caption summarizing the audio file"`
+// AnalyzeOutput represents the unified output for both audio and video analysis
+type AnalyzeOutput struct {
+	MediaType    string `json:"media_type" jsonschema:"Type of media analyzed: 'audio' or 'video'"`
+	Sense        any    `json:"sense,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
+	AudioCaption any    `json:"audio_caption,omitempty" jsonschema:"Natural language caption summarizing the audio"`
+	VideoCaption any    `json:"video_caption,omitempty" jsonschema:"Video frame analysis results from visual AI"`
 }
 
-type AnalyzeAudioInput struct {
-	FileUrl     string `json:"file_url" jsonschema:"Audio remote URL or local file absolute path (MP3/WAV/OGG)"`
-	WithCaption bool   `json:"with_caption" jsonschema:"Generate a natural language caption for the audio file (default: false)"`
+// AnalyzeInput represents the input for media analysis
+type AnalyzeInput struct {
+	FileUrl     string `json:"file_url" jsonschema:"Media file URL or local path (Audio: MP3/WAV/OGG, Video: MP4/WebM/AVI)"`
+	WithCaption bool   `json:"with_caption" jsonschema:"Generate a natural language caption for the audio (default: false)"`
+	MaxFrames   int    `json:"max_frames,omitempty" jsonschema:"Maximum number of frames to extract for video analysis, uniformly sampled (default: 64)"`
 }
 
-func AnalyzeAudioTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeAudioInput, *AnalyzeAudioOutput]) {
+func AnalyzeMediaTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeInput, *AnalyzeOutput]) {
 	tool = &mcp.Tool{
-		Name:        "analyze_audio",
-		Description: _analyzeAudioDescWithCaption,
+		Name:        "analyze_media",
+		Description: _analyzeMediaDesc,
 	}
 
-	handler = func(ctx context.Context, req *mcp.CallToolRequest, input *AnalyzeAudioInput) (*mcp.CallToolResult, *AnalyzeAudioOutput, error) {
+	handler = func(ctx context.Context, req *mcp.CallToolRequest, input *AnalyzeInput) (*mcp.CallToolResult, *AnalyzeOutput, error) {
 		// Validate input
 		if err := validateInput(input); err != nil {
 			return nil, nil, err
 		}
 
-		// Prepare audio data
-		audioInfo, rawData, err := prepareAudioData(input.FileUrl)
-		if err != nil {
-			return nil, nil, err
+		// Determine media type from file extension
+		mediaType := detectMediaType(input.FileUrl)
+
+		var result *AnalyzeOutput
+		var err error
+
+		switch mediaType {
+		case "video":
+			result, err = analyzeVideo(ctx, input)
+		case "audio":
+			result, err = analyzeAudioFile(ctx, input)
+		default:
+			return nil, nil, fmt.Errorf("unsupported media format")
 		}
 
-		// Run Sense and Caption analysis concurrently
-		result, err := runConcurrentAnalysis(ctx, audioInfo, rawData, input.WithCaption)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -68,8 +83,247 @@ func AnalyzeAudioTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeAudi
 	return tool, handler
 }
 
+// detectMediaType determines if the file is audio or video based on extension
+func detectMediaType(fileUrl string) string {
+	ext := extractExtensionFromURL(fileUrl)
+
+	if video.IsVideoFormat(ext) {
+		return "video"
+	}
+	return "audio"
+}
+
+// extractExtensionFromURL extracts file extension from URL or file path
+// Handles query parameters and URL encoding properly
+func extractExtensionFromURL(fileUrl string) string {
+	// Try to parse as URL first (handles query parameters)
+	if parsedURL, err := url.Parse(fileUrl); err == nil && parsedURL.Path != "" {
+		ext := strings.ToLower(filepath.Ext(parsedURL.Path))
+		if ext != "" {
+			return ext[1:] // Remove the dot
+		}
+	}
+
+	// Fallback to direct extension extraction for local paths
+	ext := strings.ToLower(filepath.Ext(fileUrl))
+	if ext != "" {
+		return ext[1:] // Remove the dot
+	}
+
+	return ""
+}
+
+// analyzeAudioFile handles audio-only analysis
+func analyzeAudioFile(ctx context.Context, input *AnalyzeInput) (*AnalyzeOutput, error) {
+	// Prepare audio data
+	audioInfo, rawData, err := prepareAudioData(input.FileUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run Sense and Caption analysis concurrently
+	result, err := runConcurrentAudioAnalysis(ctx, audioInfo, rawData, input.WithCaption)
+	if err != nil {
+		return nil, err
+	}
+
+	result.MediaType = "audio"
+	return result, nil
+}
+
+// analyzeVideo handles video analysis with audio extraction
+func analyzeVideo(ctx context.Context, input *AnalyzeInput) (*AnalyzeOutput, error) {
+	// Normalize and load video data
+	normalizedPath, err := util.NormalizePath(input.FileUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize file path: %w", err)
+	}
+
+	videoInfo, videoData, err := video.GetVideoInfoAndData(normalizedPath.Path, normalizedPath.IsRemote)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get video info: %w", err)
+	}
+
+	maxFrames := input.MaxFrames
+
+	// Run all analyses concurrently
+	result, err := runConcurrentVideoAnalysis(ctx, videoInfo, videoData, input.WithCaption, maxFrames)
+	if err != nil {
+		return nil, err
+	}
+
+	result.MediaType = "video"
+	return result, nil
+}
+
+// runConcurrentVideoAnalysis runs audio and video analysis concurrently
+func runConcurrentVideoAnalysis(ctx context.Context, videoInfo *video.VideoInfo, videoData []byte, withCaption bool, maxFrames int) (*AnalyzeOutput, error) {
+	var (
+		wg     sync.WaitGroup
+		result AnalyzeOutput
+		mu     sync.Mutex
+		errors []error
+		errMu  sync.Mutex
+	)
+
+	// Extract audio from video
+	audioData, err := video.ExtractAudio(videoData, videoInfo.Format)
+	if err != nil {
+		// Audio extraction might fail if video has no audio track - continue with video analysis
+		audioData = nil
+	}
+
+	// Extract frames from video (uniformly sampled)
+	frames, err := video.ExtractFrames(videoData, videoInfo.Format, videoInfo.Duration, videoInfo.FPS, maxFrames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract frames: %w", err)
+	}
+
+	// Run audio analysis (Sense and optionally Caption) if audio is available
+	if audioData != nil {
+		audioInfo := buildAudioInfoFromVideo(videoInfo, len(audioData))
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			senseData, err := analyzeSense(ctx, audioInfo, audioData)
+			if err != nil {
+				errMu.Lock()
+				errors = append(errors, fmt.Errorf("sense analysis: %w", err))
+				errMu.Unlock()
+				return
+			}
+			mu.Lock()
+			result.Sense = senseData
+			mu.Unlock()
+		}()
+
+		if withCaption {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				caption, err := analyzeCaption(ctx, audioInfo, audioData)
+				if err != nil {
+					errMu.Lock()
+					errors = append(errors, fmt.Errorf("caption analysis: %w", err))
+					errMu.Unlock()
+					return
+				}
+				mu.Lock()
+				result.AudioCaption = caption
+				mu.Unlock()
+			}()
+		}
+	}
+
+	// Run video frame analysis with Ollama
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		videoCaption, err := analyzeVideoFrames(ctx, frames)
+		if err != nil {
+			errMu.Lock()
+			errors = append(errors, fmt.Errorf("video analysis: %w", err))
+			errMu.Unlock()
+			return
+		}
+		mu.Lock()
+		result.VideoCaption = videoCaption
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("analysis failed with %d error(s): %v", len(errors), errors)
+	}
+
+	return &result, nil
+}
+
+// analyzeVideoFrames analyzes video frames using Ollama/LLaVA in a single batch request
+func analyzeVideoFrames(ctx context.Context, frames []video.FrameData) (*client.VideoAnalysisResult, error) {
+	ollamaClient := common.OllamaClientFromContext(ctx)
+	if ollamaClient == nil {
+		return nil, fmt.Errorf("ollama client not found in context")
+	}
+
+	frameCount := len(frames)
+	if frameCount == 0 {
+		return nil, fmt.Errorf("no frames to analyze")
+	}
+
+	// Collect all frame images for batch processing
+	images := make([][]byte, frameCount)
+	for i, frame := range frames {
+		images[i] = frame.Data
+	}
+
+	// Build timestamp info for the prompt
+	var timestampInfo strings.Builder
+	for i, frame := range frames {
+		if i > 0 {
+			timestampInfo.WriteString(", ")
+		}
+		timestampInfo.WriteString(fmt.Sprintf("Frame %d at %.1fs", i+1, frame.Timestamp))
+	}
+
+	// Single batch request with all frames - request JSON output
+	// Since we might have many frames (up to ~180), requesting individual descriptions for ALL frames
+	// might overwhelm the context window or output token limit.
+	// Instead, we ask for a detailed chronological summary and key event timestamps.
+	prompt := getVideoAnalysisPrompt(frameCount, timestampInfo.String())
+
+	resp, err := ollamaClient.GenerateWithImages(prompt, images)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze video frames: %w", err)
+	}
+
+	// Parse the JSON response
+	summary, keyEvents := parseVideoAnalysisJSON(resp.Response)
+
+	return &client.VideoAnalysisResult{
+		Summary:   summary,
+		KeyEvents: keyEvents,
+	}, nil
+}
+
+// videoAnalysisJSON represents the expected JSON structure from LLM
+type videoAnalysisJSON struct {
+	Summary   string            `json:"summary"`
+	KeyEvents []client.KeyEvent `json:"key_events"`
+}
+
+// parseVideoAnalysisJSON parses JSON response from LLM
+func parseVideoAnalysisJSON(response string) (string, []client.KeyEvent) {
+	// Try to extract JSON from response (LLM might add extra text)
+	jsonStr := extractJSON(response)
+
+	var parsed videoAnalysisJSON
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		slog.Debug("Video analysis JSON parse failed", "error", err)
+		// JSON parsing failed, use entire response as summary
+		return strings.TrimSpace(response), nil
+	}
+
+	return parsed.Summary, parsed.KeyEvents
+}
+
+// extractJSON extracts JSON object from a string that might contain extra text
+func extractJSON(text string) string {
+	// Find the first '{' and last '}'
+	start := strings.Index(text, "{")
+	end := strings.LastIndex(text, "}")
+
+	if start != -1 && end != -1 && end > start {
+		return text[start : end+1]
+	}
+
+	return text
+}
+
 // validateInput validates the input parameters
-func validateInput(input *AnalyzeAudioInput) error {
+func validateInput(input *AnalyzeInput) error {
 	if input == nil {
 		return fmt.Errorf("input is required")
 	}
@@ -77,6 +331,16 @@ func validateInput(input *AnalyzeAudioInput) error {
 		return fmt.Errorf("file_url is required")
 	}
 	return nil
+}
+
+// buildAudioInfoFromVideo creates AudioInfo from video metadata
+func buildAudioInfoFromVideo(videoInfo *video.VideoInfo, audioSize int) *audio.AudioInfo {
+	return &audio.AudioInfo{
+		Format:   "wav",
+		FileName: videoInfo.FileName + ".wav",
+		Size:     audioSize,
+		Duration: videoInfo.Duration,
+	}
 }
 
 // prepareAudioData normalizes the path and loads audio data
@@ -94,11 +358,11 @@ func prepareAudioData(fileUrl string) (*audio.AudioInfo, []byte, error) {
 	return audioInfo, rawData, nil
 }
 
-// runConcurrentAnalysis runs Sense and optionally Caption analysis concurrently
-func runConcurrentAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawData []byte, withCaption bool) (*AnalyzeAudioOutput, error) {
+// runConcurrentAudioAnalysis runs Sense and optionally Caption analysis concurrently
+func runConcurrentAudioAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawData []byte, withCaption bool) (*AnalyzeOutput, error) {
 	var (
 		wg     sync.WaitGroup
-		result AnalyzeAudioOutput
+		result AnalyzeOutput
 		mu     sync.Mutex // Protect concurrent writes to result
 		errors []error
 		errMu  sync.Mutex // Protect concurrent writes to errors
@@ -116,7 +380,7 @@ func runConcurrentAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawD
 			return
 		}
 		mu.Lock()
-		result.Senses = senseData
+		result.Sense = senseData
 		mu.Unlock()
 	}()
 
@@ -133,7 +397,7 @@ func runConcurrentAnalysis(ctx context.Context, audioInfo *audio.AudioInfo, rawD
 				return
 			}
 			mu.Lock()
-			result.Captions = caption
+			result.AudioCaption = caption
 			mu.Unlock()
 		}()
 	}

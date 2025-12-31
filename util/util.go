@@ -7,6 +7,11 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
+
+	"resty.dev/v3"
+
+	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
 type FilePath struct {
@@ -15,10 +20,9 @@ type FilePath struct {
 }
 
 func NormalizePath(path string) (*FilePath, error) {
-	// URL decode the path first
 	decodedPath, err := url.PathUnescape(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode path: %v", err)
+		return nil, fmt.Errorf("failed to decode path: %w", err)
 	}
 	path = decodedPath
 
@@ -112,7 +116,96 @@ func ConvertDropboxURL(shareURL string) (string, error) {
 	return "", fmt.Errorf("invalid Dropbox URL format: %s", shareURL)
 }
 
-// IsDropboxURL checks if the URL is a Dropbox URL
+// IsDropboxURL checks if the URL is a Dropbox URL.
 func IsDropboxURL(url string) bool {
 	return strings.Contains(url, "dropbox.com")
+}
+
+// IsHTTPURL checks if the given URL is HTTP or HTTPS.
+func IsHTTPURL(fileURL string) bool {
+	lower := strings.ToLower(fileURL)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
+// DownloadOptions configures the HTTP download behavior.
+type DownloadOptions struct {
+	Timeout        time.Duration
+	ContentTypeMap map[string]string // Content-Type to format mapping
+}
+
+// DownloadResult contains the result of a file download.
+type DownloadResult struct {
+	Data   []byte
+	Format string
+}
+
+// DownloadFromHTTP downloads a file from HTTP URL with configurable options.
+func DownloadFromHTTP(fileURL string, opts DownloadOptions) (*DownloadResult, error) {
+	downloadURL := fileURL
+	if IsGoogleDriveURL(fileURL) {
+		converted, err := ConvertGoogleDriveURL(fileURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Google Drive URL: %w", err)
+		}
+		downloadURL = converted
+	} else if IsDropboxURL(fileURL) {
+		converted, err := ConvertDropboxURL(fileURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Dropbox URL: %w", err)
+		}
+		downloadURL = converted
+	}
+
+	if opts.Timeout == 0 {
+		opts.Timeout = time.Minute
+	}
+
+	client := resty.New().
+		SetTimeout(opts.Timeout).
+		SetRetryCount(2).
+		SetRetryWaitTime(time.Second)
+
+	resp, err := restcli.Get(client, downloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file: %w", err)
+	}
+
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("HTTP error: %s", resp.Status())
+	}
+
+	data := resp.Bytes()
+	contentType := resp.Header().Get("Content-Type")
+
+	var format string
+	if opts.ContentTypeMap != nil {
+		format = opts.ContentTypeMap[contentType]
+	}
+
+	// Fallback to URL extension if Content-Type mapping failed
+	if format == "" {
+		format = ExtractExtensionFromURL(fileURL)
+	}
+
+	return &DownloadResult{
+		Data:   data,
+		Format: format,
+	}, nil
+}
+
+// ExtractExtensionFromURL extracts the file extension from a URL or file path.
+func ExtractExtensionFromURL(fileURL string) string {
+	if parsedURL, err := url.Parse(fileURL); err == nil && parsedURL.Path != "" {
+		ext := strings.ToLower(filepath.Ext(parsedURL.Path))
+		if ext != "" {
+			return ext[1:] // Remove the dot
+		}
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileURL))
+	if ext != "" {
+		return ext[1:]
+	}
+
+	return ""
 }

@@ -10,13 +10,13 @@ import (
 	"github.com/cochlearai/cochl-mcp-server/common"
 )
 
-func Test_Analyze(t *testing.T) {
-	tool, handlerFunc := AnalyzeAudioTool()
+func Test_AnalyzeMedia(t *testing.T) {
+	tool, handlerFunc := AnalyzeMediaTool()
 
-	assert.Equal(t, "analyze_audio", tool.Name)
+	assert.Equal(t, "analyze_media", tool.Name)
 	assert.NotEmpty(t, tool.Description)
 
-	ctx := common.NewTestContext("analyze_audio")
+	ctx := common.NewTestContext("analyze_media")
 
 	testCases := []struct {
 		name            string
@@ -128,7 +128,7 @@ func Test_Analyze(t *testing.T) {
 			// Set caption errors
 			client.SetShouldMockCaptionError(tc.shouldCaptionError)
 
-			params, parseErr := parseParams(t, tc.args, &AnalyzeAudioInput{})
+			params, parseErr := parseParams(t, tc.args, &AnalyzeInput{})
 
 			// If parameter parsing fails, check if we expected an error
 			if parseErr != nil {
@@ -151,15 +151,87 @@ func Test_Analyze(t *testing.T) {
 			require.NotNil(t, resultData)
 
 			// Sense result should always be present
-			assert.NotNil(t, resultData.Senses, "Sense result should always be present")
+			assert.NotNil(t, resultData.Sense, "Sense result should always be present")
 
 			// Caption result validation
 			if tc.withCaption {
-				assert.NotNil(t, resultData.Captions, "Caption result should be present when with_caption is true")
+				assert.NotNil(t, resultData.AudioCaption, "Caption result should be present when with_caption is true")
 			} else {
 				// Caption should be nil or omitted when with_caption is false
-				assert.Nil(t, resultData.Captions, "Caption result should be nil when with_caption is false")
+				assert.Nil(t, resultData.AudioCaption, "Caption result should be nil when with_caption is false")
 			}
+		})
+	}
+}
+
+func Test_extractExtensionFromURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		fileUrl  string
+		expected string
+	}{
+		// Local paths
+		{"local mp4", "/path/to/video.mp4", "mp4"},
+		{"local wav", "/path/to/audio.wav", "wav"},
+		{"local uppercase", "/path/to/VIDEO.MP4", "mp4"},
+		{"local no extension", "/path/to/file", ""},
+
+		// Simple URLs
+		{"simple http url mp4", "https://example.com/video.mp4", "mp4"},
+		{"simple http url mp3", "https://example.com/audio.mp3", "mp3"},
+
+		// URLs with query parameters
+		{"url with query params", "https://example.com/video.mp4?token=abc123", "mp4"},
+		{"url with multiple query params", "https://example.com/audio.wav?token=abc&expire=123", "wav"},
+
+		// Google Drive URLs (no extension in path)
+		{"google drive url", "https://drive.google.com/file/d/1234567890/view", ""},
+		{"google drive uc url", "https://drive.google.com/uc?export=download&id=1234567890", ""},
+
+		// Dropbox URLs
+		{"dropbox url", "https://www.dropbox.com/s/abc123/file.mp4?dl=0", "mp4"},
+
+		// Edge cases
+		{"empty string", "", ""},
+		{"url with fragment", "https://example.com/video.mp4#section", "mp4"},
+		{"url with port", "https://example.com:8080/video.webm", "webm"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := extractExtensionFromURL(tc.fileUrl)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func Test_detectMediaType(t *testing.T) {
+	testCases := []struct {
+		name     string
+		fileUrl  string
+		expected string
+	}{
+		// Video formats
+		{"local mp4", "/path/to/video.mp4", "video"},
+		{"local webm", "/path/to/video.webm", "video"},
+		{"local avi", "/path/to/video.avi", "video"},
+		{"url mp4 with query", "https://example.com/video.mp4?token=abc", "video"},
+
+		// Audio formats (default)
+		{"local mp3", "/path/to/audio.mp3", "audio"},
+		{"local wav", "/path/to/audio.wav", "audio"},
+		{"local ogg", "/path/to/audio.ogg", "audio"},
+		{"url mp3 with query", "https://example.com/audio.mp3?token=abc", "audio"},
+
+		// Unknown extension defaults to audio
+		{"no extension", "/path/to/file", "audio"},
+		{"google drive", "https://drive.google.com/file/d/123/view", "audio"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := detectMediaType(tc.fileUrl)
+			assert.Equal(t, tc.expected, result)
 		})
 	}
 }

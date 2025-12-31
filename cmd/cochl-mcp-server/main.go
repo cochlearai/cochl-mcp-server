@@ -18,7 +18,7 @@ func newMcpServer() *mcp.Server {
 		Version: common.Version,
 	}, nil)
 
-	tool, handler := tools.AnalyzeAudioTool()
+	tool, handler := tools.AnalyzeMediaTool()
 	mcp.AddTool(server, tool, handler)
 	return server
 }
