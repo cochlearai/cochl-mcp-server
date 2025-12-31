@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +28,7 @@ type VideoInfo struct {
 	Duration float64
 	Width    int
 	Height   int
+	FPS      float64
 	Format   string
 	FileName string
 	Size     int
@@ -52,9 +52,10 @@ type FFProbeFormat struct {
 }
 
 type FFProbeStream struct {
-	CodecType string `json:"codec_type"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
+	CodecType    string `json:"codec_type"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	AvgFrameRate string `json:"avg_frame_rate"`
 }
 
 // IsVideoFormat checks if the given format is a supported video format
@@ -150,11 +151,29 @@ func getVideoInfoFromFile(filePath string) (*VideoInfo, error) {
 		}
 	}
 
-	// Get video stream dimensions
+	// Get video stream dimensions and FPS
 	for _, stream := range probeOutput.Streams {
 		if stream.CodecType == "video" {
 			info.Width = stream.Width
 			info.Height = stream.Height
+
+			// Parse FPS
+			if stream.AvgFrameRate != "" {
+				parts := strings.Split(stream.AvgFrameRate, "/")
+				if len(parts) == 2 {
+					num, err1 := strconv.ParseFloat(parts[0], 64)
+					den, err2 := strconv.ParseFloat(parts[1], 64)
+					if err1 == nil && err2 == nil && den != 0 {
+						info.FPS = num / den
+					}
+				} else {
+					// Fallback for simple number
+					fps, err := strconv.ParseFloat(stream.AvgFrameRate, 64)
+					if err == nil {
+						info.FPS = fps
+					}
+				}
+			}
 			break
 		}
 	}
@@ -210,25 +229,53 @@ func ExtractAudio(videoData []byte, format string) ([]byte, error) {
 	return audioData, nil
 }
 
-// ExtractFrames extracts frames using uniform sampling.
-// It aims for 1 frame every 1.5 seconds, with a minimum of 8 frames.
-// Videos longer than 60 seconds are rejected.
-func ExtractFrames(videoData []byte, format string, duration float64, maxFrames int) ([]FrameData, error) {
+// ExtractFrames extracts frames using MiniCPM-V 2.6/4.5 compatible sampling logic.
+// It calculates the number of frames based on duration and preferred FPS,
+// respecting the model's packing limits.
+// If maxFramesLimit is > 0, it overrides the default maximum frame limit (180).
+func ExtractFrames(videoData []byte, format string, duration float64, videoFPS float64, maxFramesLimit int) ([]FrameData, error) {
 	const (
-		minFrames   = 8
-		interval    = 1.5 // Seconds per frame
-		maxDuration = 60.0
+		defaultMaxNumFrames = 180 // MiniCPM-V constant
+		maxNumPacking       = 3   // MiniCPM-V constant
+		chooseFPS           = 5.0 // Preferred sampling FPS
 	)
 
-	if duration > maxDuration {
-		return nil, fmt.Errorf("video duration %.2fs exceeds the limit of %.0fs", duration, maxDuration)
+	maxNumFrames := defaultMaxNumFrames
+	if maxFramesLimit > 0 {
+		maxNumFrames = maxFramesLimit
 	}
 
-	// Calculate target frame count based on duration and interval
-	targetCount := max(int(math.Ceil(duration / interval)), minFrames)
+	// Logic from MiniCPM-V: encode_video
+	var targetCount int
+	// packingNums is calculated but not strictly needed for frame extraction count,
+	// unless we want to report it. For now we use it to determine targetCount.
+	// var packingNums int
 
-	// Note: We ignore the maxFrames parameter to enforce the 1.5s interval policy
-	// and removed the maxAllowed cap as requested.
+	// Calculate target count
+	if chooseFPS*duration <= float64(maxNumFrames) {
+		// packingNums = 1
+		fpsToUse := min(chooseFPS, videoFPS)
+		if fpsToUse <= 0 {
+			fpsToUse = chooseFPS // Fallback if videoFPS is invalid
+		}
+		targetCount = int(math.Round(fpsToUse * min(float64(maxNumFrames), duration)))
+	} else {
+		packingNums := int(math.Ceil(duration * chooseFPS / float64(maxNumFrames)))
+		if packingNums <= maxNumPacking {
+			targetCount = int(math.Round(duration * chooseFPS))
+		} else {
+			targetCount = maxNumFrames * maxNumPacking
+			// packingNums = maxNumPacking
+		}
+	}
+
+	// Safety check: ensure at least 1 frame
+	if targetCount < 1 {
+		targetCount = 1
+	}
+
+	// Debug log or similar could go here to show packingNums if needed,
+	// but we just need the frames.
 
 	tmpInput, err := os.CreateTemp("", "video-input-*."+format)
 	if err != nil {
@@ -285,137 +332,69 @@ type detectedFrame struct {
 	filePath string
 }
 
-func parseFFmpegTimestamps(logs string, dir string, prefix string) []detectedFrame {
-	var frames []detectedFrame
-
-	// 1. Parse timestamps from logs
-	re := regexp.MustCompile(`n:\s*(\d+).*?pts_time:\s*([0-9\.]+)`)
-	matches := re.FindAllStringSubmatch(logs, -1)
-
-	// 2. Get actual files from directory
-	pattern := filepath.Join(dir, fmt.Sprintf("%s-*.jpg", prefix))
-	files, _ := filepath.Glob(pattern)
-	sort.Strings(files) // Ensure order: frame-001, frame-002 ...
-
-	// 3. Map logs to files
-	// If counts match, map 1:1.
-	// If mismatch, prioritize files (since we need image data).
-	count := len(files)
-	if count == 0 {
-		return nil
+// extractUniformFrames extracts frames uniformly from the video
+func extractUniformFrames(inputFile string, duration float64, count int, outputDir string) ([]detectedFrame, error) {
+	if count <= 0 {
+		count = 1
 	}
 
-	for i, file := range files {
-		var ts float64
-		// If we have a matching log entry, use its timestamp
-		if i < len(matches) {
-			// matches[i][2] is pts_time
-			parsedTs, err := strconv.ParseFloat(matches[i][2], 64)
-			if err == nil {
-				ts = parsedTs
-			}
+	// Calculate interval
+	interval := duration / float64(count)
+
+	// FFmpeg command to extract frames at intervals
+	// -vf "fps=1/interval"
+	// Note: using fps filter is generally more reliable than seek for uniform sampling
+	fps := 1.0 / interval
+	if fps > 100 {
+		fps = 30 // Cap at reasonable fps if duration is very short
+	}
+
+	// Output pattern
+	outputPattern := filepath.Join(outputDir, "frame-%03d.jpg")
+
+	cmd := exec.Command("ffmpeg",
+		"-y",
+		"-i", inputFile,
+		"-vf", fmt.Sprintf("fps=%f", fps),
+		"-q:v", "2", // High quality JPEG
+		"-frames:v", fmt.Sprintf("%d", count),
+		outputPattern,
+	)
+
+	// Capture output for debugging (optional)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("ffmpeg uniform sampling failed: %s", string(output))
+	}
+
+	// Collect generated files
+	matches, err := filepath.Glob(filepath.Join(outputDir, "frame-*.jpg"))
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(matches)
+
+	// Limit to requested count
+	if len(matches) > count {
+		matches = matches[:count]
+	}
+
+	var frames []detectedFrame
+	for i, match := range matches {
+		// Calculate timestamp based on index and interval
+		// Center the timestamp in the interval: (i + 0.5) * interval
+		ts := (float64(i) + 0.5) * interval
+		if ts > duration {
+			ts = duration
 		}
 
 		frames = append(frames, detectedFrame{
 			FrameData: FrameData{Timestamp: ts},
-			filePath:  file,
+			filePath:  match,
 		})
 	}
 
-	return frames
-}
-
-func extractUniformFrames(inputPath string, duration float64, count int, tmpDir string) ([]detectedFrame, error) {
-	if count <= 0 {
-		return nil, fmt.Errorf("invalid frame count: %d", count)
-	}
-
-	fps := float64(count) / duration
-	outputPattern := filepath.Join(tmpDir, "uniform-%03d.jpg")
-
-	// Use fps filter to extract uniformly
-	// Note: fps filter might not produce exactly 'count' frames due to rounding/duration issues,
-	// but it's much faster than loop seeking.
-	cmd := exec.Command("ffmpeg",
-		"-i", inputPath,
-		"-vf", fmt.Sprintf("fps=%.4f,showinfo", fps),
-		"-q:v", "2",
-		"-y",
-		outputPattern,
-	)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg uniform extraction failed: %w", err)
-	}
-
-	// 1. Try parsing timestamps to know exact times
-	frames := parseFFmpegTimestamps(stderr.String(), tmpDir, "uniform")
-
-	// 2. SAFETY NET: If parsing failed (empty) but files exist, use them
-	// This handles cases where showinfo format differs or parsing fails
-	if len(frames) == 0 {
-		// Glob for generated files
-		files, _ := filepath.Glob(filepath.Join(tmpDir, "uniform-*.jpg"))
-		if len(files) > 0 {
-			sort.Strings(files) // uniform-001, uniform-002...
-
-			// Reconstruct approx timestamps
-			actualCount := len(files)
-			interval := duration / float64(actualCount) // approx interval
-
-			for i, file := range files {
-				ts := float64(i) * interval
-				frames = append(frames, detectedFrame{
-					FrameData: FrameData{Timestamp: ts},
-					filePath:  file,
-				})
-			}
-		}
-	}
-
-	// If fps filter produced too many/few, we might need to slice or pad?
-	// Usually for summary, approximate count is fine.
-	// But let's limit to count if it exceeded slightly
-	if len(frames) > count {
-		step := float64(len(frames)-1) / float64(count-1)
-		var downsampled []detectedFrame
-		for i := 0; i < count; i++ {
-			idx := int(math.Round(float64(i) * step))
-			if idx >= len(frames) {
-				idx = len(frames) - 1
-			}
-			downsampled = append(downsampled, frames[idx])
-		}
-		frames = downsampled
-	}
-
 	return frames, nil
-}
-
-// calculateUniformTimestamps returns evenly distributed timestamps across the video duration
-func calculateUniformTimestamps(duration float64, count int) []float64 {
-	if count <= 0 {
-		return nil
-	}
-	if count == 1 {
-		return []float64{0}
-	}
-
-	timestamps := make([]float64, count)
-	interval := duration / float64(count-1)
-
-	for i := 0; i < count; i++ {
-		timestamps[i] = float64(i) * interval
-		// Ensure we don't exceed duration
-		if timestamps[i] > duration {
-			timestamps[i] = duration
-		}
-	}
-
-	return timestamps
 }
 
 // videoContentTypeMap maps Content-Type headers to video formats.

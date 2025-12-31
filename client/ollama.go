@@ -19,9 +19,9 @@ type Ollama interface {
 
 // OllamaResponse represents the response from Ollama generate API
 type OllamaResponse struct {
-	Model     string `json:"model"`
-	Response  string `json:"response"`
-	Done      bool   `json:"done"`
+	Model      string `json:"model"`
+	Response   string `json:"response"`
+	Done       bool   `json:"done"`
 	DoneReason string `json:"done_reason,omitempty"`
 }
 
@@ -89,14 +89,14 @@ func (c *OllamaClient) GenerateWithImages(prompt string, images [][]byte) (*Olla
 	return &result, nil
 }
 
-// FrameAnalysis represents the analysis result for a single frame
-type FrameAnalysis struct {
-	Timestamp   float64 `json:"timestamp"`
-	Description string  `json:"description"`
+// KeyEvent represents a significant event in the video
+type KeyEvent struct {
+	Timestamp   string `json:"timestamp"`
+	Description string `json:"description"`
 }
 
 // VideoAnalysisResult represents the complete video analysis result
 type VideoAnalysisResult struct {
-	Frames  []FrameAnalysis `json:"frames"`
-	Summary string          `json:"summary,omitempty"`
+	Summary         string     `json:"summary"`
+	KeyEvents       []KeyEvent `json:"key_events"`
 }

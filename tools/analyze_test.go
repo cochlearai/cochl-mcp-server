@@ -155,10 +155,10 @@ func Test_AnalyzeMedia(t *testing.T) {
 
 			// Caption result validation
 			if tc.withCaption {
-				assert.NotNil(t, resultData.Caption, "Caption result should be present when with_caption is true")
+				assert.NotNil(t, resultData.AudioCaption, "Caption result should be present when with_caption is true")
 			} else {
 				// Caption should be nil or omitted when with_caption is false
-				assert.Nil(t, resultData.Caption, "Caption result should be nil when with_caption is false")
+				assert.Nil(t, resultData.AudioCaption, "Caption result should be nil when with_caption is false")
 			}
 		})
 	}

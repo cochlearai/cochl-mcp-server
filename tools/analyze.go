@@ -24,7 +24,6 @@ import (
 const (
 	_inferenceTimeout         = 30 * time.Second
 	_pollingInterval          = 2 * time.Second
-	_defaultMaxFrames         = 8
 	_durationForSingleCaption = 10 // seconds
 	_maxConcurrentChunks      = 5
 
@@ -36,7 +35,7 @@ const (
 type AnalyzeOutput struct {
 	MediaType    string `json:"media_type" jsonschema:"Type of media analyzed: 'audio' or 'video'"`
 	Sense        any    `json:"sense,omitempty" jsonschema:"Temporal segments with detected sounds/events and probability scores"`
-	Caption      any    `json:"caption,omitempty" jsonschema:"Natural language caption summarizing the audio"`
+	AudioCaption any    `json:"audio_caption,omitempty" jsonschema:"Natural language caption summarizing the audio"`
 	VideoCaption any    `json:"video_caption,omitempty" jsonschema:"Video frame analysis results from visual AI"`
 }
 
@@ -44,7 +43,7 @@ type AnalyzeOutput struct {
 type AnalyzeInput struct {
 	FileUrl     string `json:"file_url" jsonschema:"Media file URL or local path (Audio: MP3/WAV/OGG, Video: MP4/WebM/AVI)"`
 	WithCaption bool   `json:"with_caption" jsonschema:"Generate a natural language caption for the audio (default: false)"`
-	MaxFrames   int    `json:"max_frames,omitempty" jsonschema:"Maximum number of frames to extract for video analysis, uniformly sampled (default: 8, max: 16)"`
+	MaxFrames   int    `json:"max_frames,omitempty" jsonschema:"Maximum number of frames to extract for video analysis, uniformly sampled (default: 64)"`
 }
 
 func AnalyzeMediaTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeInput, *AnalyzeOutput]) {
@@ -146,9 +145,6 @@ func analyzeVideo(ctx context.Context, input *AnalyzeInput) (*AnalyzeOutput, err
 	}
 
 	maxFrames := input.MaxFrames
-	if maxFrames <= 0 {
-		maxFrames = _defaultMaxFrames
-	}
 
 	// Run all analyses concurrently
 	result, err := runConcurrentVideoAnalysis(ctx, videoInfo, videoData, input.WithCaption, maxFrames)
@@ -178,7 +174,7 @@ func runConcurrentVideoAnalysis(ctx context.Context, videoInfo *video.VideoInfo,
 	}
 
 	// Extract frames from video (uniformly sampled)
-	frames, err := video.ExtractFrames(videoData, videoInfo.Format, videoInfo.Duration, maxFrames)
+	frames, err := video.ExtractFrames(videoData, videoInfo.Format, videoInfo.Duration, videoInfo.FPS, maxFrames)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract frames: %w", err)
 	}
@@ -214,7 +210,7 @@ func runConcurrentVideoAnalysis(ctx context.Context, videoInfo *video.VideoInfo,
 					return
 				}
 				mu.Lock()
-				result.Caption = caption
+				result.AudioCaption = caption
 				mu.Unlock()
 			}()
 		}
@@ -273,14 +269,10 @@ func analyzeVideoFrames(ctx context.Context, frames []video.FrameData) (*client.
 	}
 
 	// Single batch request with all frames - request JSON output
-	prompt := fmt.Sprintf(`Analyze these %d video frames. %s
-
-You MUST provide exactly %d frame descriptions in the JSON response, one for each frame.
-
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
-{"frames":[{"frame":1,"description":"..."},{"frame":2,"description":"..."},...,{"frame":%d,"description":"..."}],"summary":"..."}
-
-Provide a brief description (1-2 sentences) for EACH of the %d frames and an overall summary.`, frameCount, timestampInfo.String(), frameCount, frameCount, frameCount)
+	// Since we might have many frames (up to ~180), requesting individual descriptions for ALL frames
+	// might overwhelm the context window or output token limit.
+	// Instead, we ask for a detailed chronological summary and key event timestamps.
+	prompt := getVideoAnalysisPrompt(frameCount, timestampInfo.String())
 
 	resp, err := ollamaClient.GenerateWithImages(prompt, images)
 	if err != nil {
@@ -288,59 +280,33 @@ Provide a brief description (1-2 sentences) for EACH of the %d frames and an ove
 	}
 
 	// Parse the JSON response
-	frameAnalyses, summary := parseVideoAnalysisJSON(resp.Response, frames)
+	summary, keyEvents := parseVideoAnalysisJSON(resp.Response)
 
 	return &client.VideoAnalysisResult{
-		Frames:  frameAnalyses,
-		Summary: summary,
+		Summary:   summary,
+		KeyEvents: keyEvents,
 	}, nil
 }
 
 // videoAnalysisJSON represents the expected JSON structure from LLM
 type videoAnalysisJSON struct {
-	Frames []struct {
-		Frame       int    `json:"frame"`
-		Description string `json:"description"`
-	} `json:"frames"`
-	Summary string `json:"summary"`
+	Summary   string            `json:"summary"`
+	KeyEvents []client.KeyEvent `json:"key_events"`
 }
 
-// parseVideoAnalysisJSON parses JSON response from LLM into frame analyses
-func parseVideoAnalysisJSON(response string, frames []video.FrameData) ([]client.FrameAnalysis, string) {
-	frameAnalyses := make([]client.FrameAnalysis, len(frames))
-
-	// Initialize with default values
-	for i, frame := range frames {
-		frameAnalyses[i] = client.FrameAnalysis{
-			Timestamp:   frame.Timestamp,
-			Description: "Frame description not available",
-		}
-	}
-
+// parseVideoAnalysisJSON parses JSON response from LLM
+func parseVideoAnalysisJSON(response string) (string, []client.KeyEvent) {
 	// Try to extract JSON from response (LLM might add extra text)
 	jsonStr := extractJSON(response)
-
-	// Debug logging
-	slog.Debug("Video analysis JSON parsing", "rawResponseLength", len(response), "extractedJSON", jsonStr)
 
 	var parsed videoAnalysisJSON
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 		slog.Debug("Video analysis JSON parse failed", "error", err)
 		// JSON parsing failed, use entire response as summary
-		return frameAnalyses, strings.TrimSpace(response)
+		return strings.TrimSpace(response), nil
 	}
 
-	slog.Debug("Video analysis JSON parsed successfully", "frameCount", len(parsed.Frames))
-
-	// Map parsed descriptions to frame analyses
-	// Use sequential index since LLM returns frames in order
-	for i, f := range parsed.Frames {
-		if i < len(frameAnalyses) && f.Description != "" {
-			frameAnalyses[i].Description = f.Description
-		}
-	}
-
-	return frameAnalyses, parsed.Summary
+	return parsed.Summary, parsed.KeyEvents
 }
 
 // extractJSON extracts JSON object from a string that might contain extra text
@@ -431,7 +397,7 @@ func runConcurrentAudioAnalysis(ctx context.Context, audioInfo *audio.AudioInfo,
 				return
 			}
 			mu.Lock()
-			result.Caption = caption
+			result.AudioCaption = caption
 			mu.Unlock()
 		}()
 	}
