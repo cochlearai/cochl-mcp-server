@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -207,19 +210,25 @@ func ExtractAudio(videoData []byte, format string) ([]byte, error) {
 	return audioData, nil
 }
 
-// ExtractFrames extracts a fixed number of frames uniformly distributed across the video.
+// ExtractFrames extracts frames using uniform sampling.
+// It aims for 1 frame every 1.5 seconds, with a minimum of 8 frames.
+// Videos longer than 60 seconds are rejected.
 func ExtractFrames(videoData []byte, format string, duration float64, maxFrames int) ([]FrameData, error) {
 	const (
-		defaultFrames = 8
-		maxAllowed    = 16
+		minFrames   = 8
+		interval    = 1.5 // Seconds per frame
+		maxDuration = 60.0
 	)
 
-	if maxFrames <= 0 {
-		maxFrames = defaultFrames
+	if duration > maxDuration {
+		return nil, fmt.Errorf("video duration %.2fs exceeds the limit of %.0fs", duration, maxDuration)
 	}
-	if maxFrames > maxAllowed {
-		maxFrames = maxAllowed
-	}
+
+	// Calculate target frame count based on duration and interval
+	targetCount := max(int(math.Ceil(duration / interval)), minFrames)
+
+	// Note: We ignore the maxFrames parameter to enforce the 1.5s interval policy
+	// and removed the maxAllowed cap as requested.
 
 	tmpInput, err := os.CreateTemp("", "video-input-*."+format)
 	if err != nil {
@@ -233,49 +242,154 @@ func ExtractFrames(videoData []byte, format string, duration float64, maxFrames 
 	}
 	tmpInput.Close()
 
-	timestamps := calculateUniformTimestamps(duration, maxFrames)
-
 	tmpDir, err := os.MkdirTemp("", "frames-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Extract frames at specific timestamps
-	var frames []FrameData
-	for i, ts := range timestamps {
-		outputPath := filepath.Join(tmpDir, fmt.Sprintf("frame-%04d.jpg", i+1))
+	// Use Uniform Sampling
+	detectedFrames, err := extractUniformFrames(tmpInput.Name(), duration, targetCount, tmpDir)
+	if err != nil {
+		return nil, err
+	}
 
-		cmd := exec.Command("ffmpeg",
-			"-ss", fmt.Sprintf("%.3f", ts), // Seek to timestamp
-			"-i", tmpInput.Name(),
-			"-vframes", "1", // Extract 1 frame
-			"-q:v", "2",     // High quality JPEG
-			"-y",
-			outputPath,
-		)
-
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-
-		if err := cmd.Run(); err != nil {
-			// Skip frames that fail to extract (e.g., timestamp beyond video)
-			continue
-		}
-
-		frameData, err := os.ReadFile(outputPath)
+	// Read actual image data for the selected frames
+	var resultFrames []FrameData
+	for _, f := range detectedFrames {
+		data, err := os.ReadFile(f.filePath)
 		if err != nil {
-			continue
+			continue // Skip if read failed
 		}
-
-		frames = append(frames, FrameData{
-			Timestamp: ts,
-			Data:      frameData,
+		resultFrames = append(resultFrames, FrameData{
+			Timestamp: f.Timestamp,
+			Data:      data,
 		})
 	}
 
+	if len(resultFrames) == 0 {
+		return nil, fmt.Errorf("no frames extracted")
+	}
+
+	// Sort by timestamp just in case
+	sort.Slice(resultFrames, func(i, j int) bool {
+		return resultFrames[i].Timestamp < resultFrames[j].Timestamp
+	})
+
+	return resultFrames, nil
+}
+
+// temp internal struct for processing
+type detectedFrame struct {
+	FrameData
+	filePath string
+}
+
+func parseFFmpegTimestamps(logs string, dir string, prefix string) []detectedFrame {
+	var frames []detectedFrame
+
+	// 1. Parse timestamps from logs
+	re := regexp.MustCompile(`n:\s*(\d+).*?pts_time:\s*([0-9\.]+)`)
+	matches := re.FindAllStringSubmatch(logs, -1)
+
+	// 2. Get actual files from directory
+	pattern := filepath.Join(dir, fmt.Sprintf("%s-*.jpg", prefix))
+	files, _ := filepath.Glob(pattern)
+	sort.Strings(files) // Ensure order: frame-001, frame-002 ...
+
+	// 3. Map logs to files
+	// If counts match, map 1:1.
+	// If mismatch, prioritize files (since we need image data).
+	count := len(files)
+	if count == 0 {
+		return nil
+	}
+
+	for i, file := range files {
+		var ts float64
+		// If we have a matching log entry, use its timestamp
+		if i < len(matches) {
+			// matches[i][2] is pts_time
+			parsedTs, err := strconv.ParseFloat(matches[i][2], 64)
+			if err == nil {
+				ts = parsedTs
+			}
+		}
+
+		frames = append(frames, detectedFrame{
+			FrameData: FrameData{Timestamp: ts},
+			filePath:  file,
+		})
+	}
+
+	return frames
+}
+
+func extractUniformFrames(inputPath string, duration float64, count int, tmpDir string) ([]detectedFrame, error) {
+	if count <= 0 {
+		return nil, fmt.Errorf("invalid frame count: %d", count)
+	}
+
+	fps := float64(count) / duration
+	outputPattern := filepath.Join(tmpDir, "uniform-%03d.jpg")
+
+	// Use fps filter to extract uniformly
+	// Note: fps filter might not produce exactly 'count' frames due to rounding/duration issues,
+	// but it's much faster than loop seeking.
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-vf", fmt.Sprintf("fps=%.4f,showinfo", fps),
+		"-q:v", "2",
+		"-y",
+		outputPattern,
+	)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg uniform extraction failed: %w", err)
+	}
+
+	// 1. Try parsing timestamps to know exact times
+	frames := parseFFmpegTimestamps(stderr.String(), tmpDir, "uniform")
+
+	// 2. SAFETY NET: If parsing failed (empty) but files exist, use them
+	// This handles cases where showinfo format differs or parsing fails
 	if len(frames) == 0 {
-		return nil, fmt.Errorf("no frames extracted from video")
+		// Glob for generated files
+		files, _ := filepath.Glob(filepath.Join(tmpDir, "uniform-*.jpg"))
+		if len(files) > 0 {
+			sort.Strings(files) // uniform-001, uniform-002...
+
+			// Reconstruct approx timestamps
+			actualCount := len(files)
+			interval := duration / float64(actualCount) // approx interval
+
+			for i, file := range files {
+				ts := float64(i) * interval
+				frames = append(frames, detectedFrame{
+					FrameData: FrameData{Timestamp: ts},
+					filePath:  file,
+				})
+			}
+		}
+	}
+
+	// If fps filter produced too many/few, we might need to slice or pad?
+	// Usually for summary, approximate count is fine.
+	// But let's limit to count if it exceeded slightly
+	if len(frames) > count {
+		step := float64(len(frames)-1) / float64(count-1)
+		var downsampled []detectedFrame
+		for i := 0; i < count; i++ {
+			idx := int(math.Round(float64(i) * step))
+			if idx >= len(frames) {
+				idx = len(frames) - 1
+			}
+			downsampled = append(downsampled, frames[idx])
+		}
+		frames = downsampled
 	}
 
 	return frames, nil

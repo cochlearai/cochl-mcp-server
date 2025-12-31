@@ -114,4 +114,8 @@ fabric.properties
 cochl-mcp-server
 cochl-mcp-server.exe
 
+#.claude setup
 .claude
+
+# local test files
+localtest
