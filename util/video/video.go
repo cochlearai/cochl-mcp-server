@@ -11,10 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"resty.dev/v3"
-
 	"github.com/cochlearai/cochl-mcp-server/util"
-	"github.com/cochlearai/cochl-mcp-server/util/restcli"
 )
 
 // Supported video formats
@@ -62,8 +59,8 @@ func IsVideoFormat(format string) bool {
 	return SupportedVideoFormats[strings.ToLower(format)]
 }
 
-// GetVideoInfoAndData returns video info and raw data
-func GetVideoInfoAndData(fileUrl string, isRemote bool) (*VideoInfo, []byte, error) {
+// GetVideoInfoAndData returns video info and raw data.
+func GetVideoInfoAndData(fileURL string, isRemote bool) (*VideoInfo, []byte, error) {
 	var (
 		rawData  []byte
 		format   string
@@ -71,44 +68,40 @@ func GetVideoInfoAndData(fileUrl string, isRemote bool) (*VideoInfo, []byte, err
 		err      error
 	)
 
-	// Check if it's a remote HTTP URL
-	if isHTTPURL(fileUrl) || isRemote {
-		rawData, format, err = downloadFromHTTP(fileUrl)
+	if util.IsHTTPURL(fileURL) || isRemote {
+		rawData, format, err = downloadFromHTTP(fileURL)
 		if err != nil {
 			return nil, nil, err
 		}
 		fileName = fmt.Sprintf("video-%d.%s", time.Now().UnixNano(), format)
 	} else {
-		// Read local file
-		rawData, err = os.ReadFile(fileUrl)
+		rawData, err = os.ReadFile(fileURL)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read file: %v", err)
+			return nil, nil, fmt.Errorf("failed to read file: %w", err)
 		}
-		format = strings.ToLower(filepath.Ext(fileUrl))
+		format = strings.ToLower(filepath.Ext(fileURL))
 		if format != "" {
 			format = format[1:] // Remove the dot
 		}
-		fileName = filepath.Base(fileUrl)
+		fileName = filepath.Base(fileURL)
 	}
 
 	if !IsVideoFormat(format) {
 		return nil, nil, fmt.Errorf("unsupported video format: %s", format)
 	}
 
-	// Create temp file for ffprobe
 	tmpFile, err := os.CreateTemp("", "video-*."+format)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create temp file: %v", err)
+		return nil, nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
 	if _, err := tmpFile.Write(rawData); err != nil {
-		return nil, nil, fmt.Errorf("failed to write temp file: %v", err)
+		return nil, nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
 	tmpFile.Close()
 
-	// Get video info using ffprobe
 	info, err := getVideoInfoFromFile(tmpFile.Name())
 	if err != nil {
 		return nil, nil, err
@@ -121,7 +114,7 @@ func GetVideoInfoAndData(fileUrl string, isRemote bool) (*VideoInfo, []byte, err
 	return info, rawData, nil
 }
 
-// getVideoInfoFromFile uses ffprobe to get video metadata
+// getVideoInfoFromFile uses ffprobe to get video metadata.
 func getVideoInfoFromFile(filePath string) (*VideoInfo, error) {
 	cmd := exec.Command("ffprobe",
 		"-v", "quiet",
@@ -136,12 +129,12 @@ func getVideoInfoFromFile(filePath string) (*VideoInfo, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffprobe failed: %v, stderr: %s", err, stderr.String())
+		return nil, fmt.Errorf("ffprobe failed: %w, stderr: %s", err, stderr.String())
 	}
 
 	var probeOutput FFProbeOutput
 	if err := json.Unmarshal(stdout.Bytes(), &probeOutput); err != nil {
-		return nil, fmt.Errorf("failed to parse ffprobe output: %v", err)
+		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
 	}
 
 	info := &VideoInfo{}
@@ -166,39 +159,36 @@ func getVideoInfoFromFile(filePath string) (*VideoInfo, error) {
 	return info, nil
 }
 
-// ExtractAudio extracts audio track from video file
-// Returns audio data in WAV format
+// ExtractAudio extracts audio track from video file.
+// Returns audio data in WAV format.
 func ExtractAudio(videoData []byte, format string) ([]byte, error) {
-	// Create temp input file
 	tmpInput, err := os.CreateTemp("", "video-input-*."+format)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp input file: %v", err)
+		return nil, fmt.Errorf("failed to create temp input file: %w", err)
 	}
 	defer os.Remove(tmpInput.Name())
 
 	if _, err := tmpInput.Write(videoData); err != nil {
 		tmpInput.Close()
-		return nil, fmt.Errorf("failed to write temp input file: %v", err)
+		return nil, fmt.Errorf("failed to write temp input file: %w", err)
 	}
 	tmpInput.Close()
 
-	// Create temp output file
 	tmpOutput, err := os.CreateTemp("", "audio-output-*.wav")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp output file: %v", err)
+		return nil, fmt.Errorf("failed to create temp output file: %w", err)
 	}
 	tmpOutputName := tmpOutput.Name()
 	tmpOutput.Close()
 	defer os.Remove(tmpOutputName)
 
-	// Extract audio using ffmpeg
 	cmd := exec.Command("ffmpeg",
 		"-i", tmpInput.Name(),
-		"-vn",                // No video
-		"-acodec", "pcm_s16le", // PCM 16-bit little-endian
-		"-ar", "44100",       // Sample rate
-		"-ac", "2",           // Stereo
-		"-y",                 // Overwrite output
+		"-vn",
+		"-acodec", "pcm_s16le",
+		"-ar", "44100",
+		"-ac", "2",
+		"-y",
 		tmpOutputName,
 	)
 
@@ -206,47 +196,48 @@ func ExtractAudio(videoData []byte, format string) ([]byte, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg audio extraction failed: %v, stderr: %s", err, stderr.String())
+		return nil, fmt.Errorf("ffmpeg audio extraction failed: %w, stderr: %s", err, stderr.String())
 	}
 
-	// Read the output audio file
 	audioData, err := os.ReadFile(tmpOutputName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read extracted audio: %v", err)
+		return nil, fmt.Errorf("failed to read extracted audio: %w", err)
 	}
 
 	return audioData, nil
 }
 
-// ExtractFrames extracts a fixed number of frames uniformly distributed across the video
+// ExtractFrames extracts a fixed number of frames uniformly distributed across the video.
 func ExtractFrames(videoData []byte, format string, duration float64, maxFrames int) ([]FrameData, error) {
+	const (
+		defaultFrames = 8
+		maxAllowed    = 16
+	)
+
 	if maxFrames <= 0 {
-		maxFrames = 8 // Default 8 frames
+		maxFrames = defaultFrames
 	}
-	if maxFrames > 16 {
-		maxFrames = 16 // Cap at 16 frames to avoid token limits
+	if maxFrames > maxAllowed {
+		maxFrames = maxAllowed
 	}
 
-	// Create temp input file
 	tmpInput, err := os.CreateTemp("", "video-input-*."+format)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp input file: %v", err)
+		return nil, fmt.Errorf("failed to create temp input file: %w", err)
 	}
 	defer os.Remove(tmpInput.Name())
 
 	if _, err := tmpInput.Write(videoData); err != nil {
 		tmpInput.Close()
-		return nil, fmt.Errorf("failed to write temp input file: %v", err)
+		return nil, fmt.Errorf("failed to write temp input file: %w", err)
 	}
 	tmpInput.Close()
 
-	// Calculate timestamps for uniform sampling
 	timestamps := calculateUniformTimestamps(duration, maxFrames)
 
-	// Create temp directory for frames
 	tmpDir, err := os.MkdirTemp("", "frames-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %v", err)
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -313,64 +304,22 @@ func calculateUniformTimestamps(duration float64, count int) []float64 {
 	return timestamps
 }
 
-// isHTTPURL checks if the given URL is HTTP or HTTPS
-func isHTTPURL(fileUrl string) bool {
-	return strings.HasPrefix(strings.ToLower(fileUrl), "http://") ||
-		strings.HasPrefix(strings.ToLower(fileUrl), "https://")
+// videoContentTypeMap maps Content-Type headers to video formats.
+var videoContentTypeMap = map[string]string{
+	"video/mp4":       "mp4",
+	"video/webm":      "webm",
+	"video/x-msvideo": "avi",
+	"video/avi":       "avi",
 }
 
-// downloadFromHTTP downloads file from HTTP URL
-func downloadFromHTTP(fileUrl string) ([]byte, string, error) {
-	// Check if it's a Google Drive URL and convert it
-	downloadURL := fileUrl
-	if util.IsGoogleDriveURL(fileUrl) {
-		convertedURL, err := util.ConvertGoogleDriveURL(fileUrl)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to convert Google Drive URL: %v", err)
-		}
-		downloadURL = convertedURL
-	} else if util.IsDropboxURL(fileUrl) {
-		convertedURL, err := util.ConvertDropboxURL(fileUrl)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to convert Dropbox URL: %v", err)
-		}
-		downloadURL = convertedURL
-	}
-
-	// Create resty client with timeout
-	client := resty.New().
-		SetTimeout(5 * time.Minute). // Longer timeout for video files
-		SetRetryCount(2).
-		SetRetryWaitTime(1 * time.Second)
-
-	resp, err := restcli.Get(client, downloadURL, nil)
+// downloadFromHTTP downloads a video file from HTTP URL.
+func downloadFromHTTP(fileURL string) ([]byte, string, error) {
+	result, err := util.DownloadFromHTTP(fileURL, util.DownloadOptions{
+		Timeout:        5 * time.Minute, // Longer timeout for video files
+		ContentTypeMap: videoContentTypeMap,
+	})
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to download file: %v", err)
+		return nil, "", err
 	}
-
-	if !resp.IsSuccess() {
-		return nil, "", fmt.Errorf("HTTP error: %s", resp.Status())
-	}
-
-	data := resp.Bytes()
-
-	// Get format from Content-Type or URL
-	contentType := resp.Header().Get("Content-Type")
-	var format string
-	switch contentType {
-	case "video/mp4":
-		format = "mp4"
-	case "video/webm":
-		format = "webm"
-	case "video/x-msvideo", "video/avi":
-		format = "avi"
-	default:
-		// Try to get from URL extension
-		format = strings.ToLower(filepath.Ext(fileUrl))
-		if format != "" {
-			format = format[1:]
-		}
-	}
-
-	return data, format, nil
+	return result.Data, result.Format, nil
 }

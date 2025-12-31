@@ -163,3 +163,75 @@ func Test_AnalyzeMedia(t *testing.T) {
 		})
 	}
 }
+
+func Test_extractExtensionFromURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		fileUrl  string
+		expected string
+	}{
+		// Local paths
+		{"local mp4", "/path/to/video.mp4", "mp4"},
+		{"local wav", "/path/to/audio.wav", "wav"},
+		{"local uppercase", "/path/to/VIDEO.MP4", "mp4"},
+		{"local no extension", "/path/to/file", ""},
+
+		// Simple URLs
+		{"simple http url mp4", "https://example.com/video.mp4", "mp4"},
+		{"simple http url mp3", "https://example.com/audio.mp3", "mp3"},
+
+		// URLs with query parameters
+		{"url with query params", "https://example.com/video.mp4?token=abc123", "mp4"},
+		{"url with multiple query params", "https://example.com/audio.wav?token=abc&expire=123", "wav"},
+
+		// Google Drive URLs (no extension in path)
+		{"google drive url", "https://drive.google.com/file/d/1234567890/view", ""},
+		{"google drive uc url", "https://drive.google.com/uc?export=download&id=1234567890", ""},
+
+		// Dropbox URLs
+		{"dropbox url", "https://www.dropbox.com/s/abc123/file.mp4?dl=0", "mp4"},
+
+		// Edge cases
+		{"empty string", "", ""},
+		{"url with fragment", "https://example.com/video.mp4#section", "mp4"},
+		{"url with port", "https://example.com:8080/video.webm", "webm"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := extractExtensionFromURL(tc.fileUrl)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func Test_detectMediaType(t *testing.T) {
+	testCases := []struct {
+		name     string
+		fileUrl  string
+		expected string
+	}{
+		// Video formats
+		{"local mp4", "/path/to/video.mp4", "video"},
+		{"local webm", "/path/to/video.webm", "video"},
+		{"local avi", "/path/to/video.avi", "video"},
+		{"url mp4 with query", "https://example.com/video.mp4?token=abc", "video"},
+
+		// Audio formats (default)
+		{"local mp3", "/path/to/audio.mp3", "audio"},
+		{"local wav", "/path/to/audio.wav", "audio"},
+		{"local ogg", "/path/to/audio.ogg", "audio"},
+		{"url mp3 with query", "https://example.com/audio.mp3?token=abc", "audio"},
+
+		// Unknown extension defaults to audio
+		{"no extension", "/path/to/file", "audio"},
+		{"google drive", "https://drive.google.com/file/d/123/view", "audio"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := detectMediaType(tc.fileUrl)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}

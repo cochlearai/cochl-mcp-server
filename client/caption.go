@@ -50,8 +50,8 @@ func (c *CaptionClient) Inference(contentType, fileName string, audioData []byte
 		return nil, err
 	}
 
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("failed to infer: %v", res.String())
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("failed to infer: %s", res.String())
 	}
 
 	return &result, nil

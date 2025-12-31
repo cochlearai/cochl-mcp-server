@@ -68,7 +68,8 @@ func (c *OllamaClient) GenerateWithImages(prompt string, images [][]byte) (*Olla
 		"model":  c.Model,
 		"prompt": prompt,
 		"images": base64Images,
-		"stream": false, // Disable streaming for simpler handling
+		"stream": false,  // Disable streaming for simpler handling
+		"format": "json", // Force JSON output format
 	}
 
 	param := restcli.Params{
@@ -81,8 +82,8 @@ func (c *OllamaClient) GenerateWithImages(prompt string, images [][]byte) (*Olla
 		return nil, fmt.Errorf("ollama request failed: %w", err)
 	}
 
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("ollama returned status %d: %s", res.StatusCode(), res.String())
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("ollama request failed: %s", res.String())
 	}
 
 	return &result, nil

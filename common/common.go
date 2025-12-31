@@ -29,20 +29,19 @@ type ollamaClientKey struct{}
 
 var ExtractCochlApiClientFromEnv = func(ctx context.Context) context.Context {
 	apiKey := os.Getenv(_cochlSenseProjectKeyEnvVar)
-	baseUrl := os.Getenv(_cochlSenseBaseURLEnvVar)
-	if baseUrl == "" {
-		baseUrl = _defaultBaseURL
+	baseURL := os.Getenv(_cochlSenseBaseURLEnvVar)
+	if baseURL == "" {
+		baseURL = _defaultBaseURL
 	}
 
-	senseClient := client.NewSense(apiKey, baseUrl, Version)
-	captionClient := client.NewCaption(apiKey, baseUrl, Version)
+	senseClient := client.NewSense(apiKey, baseURL, Version)
+	captionClient := client.NewCaption(apiKey, baseURL, Version)
 
 	ctx = context.WithValue(ctx, senseApiClientKey{}, senseClient)
 	ctx = context.WithValue(ctx, captionApiClientKey{}, captionClient)
 
-	slog.Debug("Cochl api client created", "baseUrl", baseUrl, "version", Version, "api-key-set", apiKey != "")
+	slog.Debug("Cochl api client created", "baseURL", baseURL, "version", Version, "api-key-set", apiKey != "")
 
-	// Create Ollama client
 	ollamaBaseURL := os.Getenv(_ollamaBaseURLEnvVar)
 	if ollamaBaseURL == "" {
 		ollamaBaseURL = _defaultOllamaBaseURL
@@ -55,7 +54,7 @@ var ExtractCochlApiClientFromEnv = func(ctx context.Context) context.Context {
 	ollamaClient := client.NewOllama(ollamaBaseURL, ollamaModel, Version)
 	ctx = context.WithValue(ctx, ollamaClientKey{}, ollamaClient)
 
-	slog.Debug("Ollama client created", "baseUrl", ollamaBaseURL, "model", ollamaModel)
+	slog.Debug("Ollama client created", "baseURL", ollamaBaseURL, "model", ollamaModel)
 
 	return ctx
 }

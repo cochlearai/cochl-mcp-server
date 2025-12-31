@@ -76,8 +76,8 @@ func (c *SenseClient) CreateSession(fileName, contentType string, duration float
 		return nil, err
 	}
 
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("failed to create session: %v", res.String())
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("failed to create session: %s", res.String())
 	}
 
 	return &result, nil
@@ -97,8 +97,8 @@ func (c *SenseClient) UploadChunk(sessionID string, chunkSequence int, chunk []b
 		return nil, err
 	}
 
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("failed to upload chunk: %v", res.String())
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("failed to upload chunk: %s", res.String())
 	}
 
 	return &result, nil
@@ -111,8 +111,8 @@ func (c *SenseClient) GetInferenceResult(sessionID string) (*RespInferenceResult
 		return nil, err
 	}
 
-	if res.StatusCode() != 200 {
-		return nil, fmt.Errorf("failed to get inference result: %v", res.String())
+	if !res.IsSuccess() {
+		return nil, fmt.Errorf("failed to get inference result: %s", res.String())
 	}
 
 	return &result, nil
@@ -124,8 +124,8 @@ func (c *SenseClient) DeleteSession(sessionID string) error {
 		return err
 	}
 
-	if res.StatusCode() != 200 {
-		return fmt.Errorf("failed to delete session: %v", res.String())
+	if !res.IsSuccess() {
+		return fmt.Errorf("failed to delete session: %s", res.String())
 	}
 
 	return nil

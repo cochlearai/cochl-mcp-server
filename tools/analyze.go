@@ -2,7 +2,10 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,14 +22,12 @@ import (
 )
 
 const (
-	// Timing and concurrency
 	_inferenceTimeout         = 30 * time.Second
 	_pollingInterval          = 2 * time.Second
 	_defaultMaxFrames         = 8
-	_durationForSingleCaption = 10 // 10 seconds
-	_maxConcurrentChunks      = 5  // Limit concurrent processing
+	_durationForSingleCaption = 10 // seconds
+	_maxConcurrentChunks      = 5
 
-	// Caption processing
 	_captionTempDirPattern = "audio-chunks-*"
 	_captionChunkDirName   = "chunks"
 )
@@ -85,15 +86,32 @@ func AnalyzeMediaTool() (tool *mcp.Tool, handler mcp.ToolHandlerFor[*AnalyzeInpu
 
 // detectMediaType determines if the file is audio or video based on extension
 func detectMediaType(fileUrl string) string {
-	ext := strings.ToLower(filepath.Ext(fileUrl))
-	if ext != "" {
-		ext = ext[1:] // Remove the dot
-	}
+	ext := extractExtensionFromURL(fileUrl)
 
 	if video.IsVideoFormat(ext) {
 		return "video"
 	}
 	return "audio"
+}
+
+// extractExtensionFromURL extracts file extension from URL or file path
+// Handles query parameters and URL encoding properly
+func extractExtensionFromURL(fileUrl string) string {
+	// Try to parse as URL first (handles query parameters)
+	if parsedURL, err := url.Parse(fileUrl); err == nil && parsedURL.Path != "" {
+		ext := strings.ToLower(filepath.Ext(parsedURL.Path))
+		if ext != "" {
+			return ext[1:] // Remove the dot
+		}
+	}
+
+	// Fallback to direct extension extraction for local paths
+	ext := strings.ToLower(filepath.Ext(fileUrl))
+	if ext != "" {
+		return ext[1:] // Remove the dot
+	}
+
+	return ""
 }
 
 // analyzeAudioFile handles audio-only analysis
@@ -165,17 +183,13 @@ func runConcurrentVideoAnalysis(ctx context.Context, videoInfo *video.VideoInfo,
 		return nil, fmt.Errorf("failed to extract frames: %w", err)
 	}
 
-	// Run Sense analysis on extracted audio (if available)
+	// Run audio analysis (Sense and optionally Caption) if audio is available
 	if audioData != nil {
+		audioInfo := buildAudioInfoFromVideo(videoInfo, len(audioData))
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			audioInfo := &audio.AudioInfo{
-				Format:   "wav",
-				FileName: videoInfo.FileName + ".wav",
-				Size:     len(audioData),
-				Duration: videoInfo.Duration,
-			}
 			senseData, err := analyzeSense(ctx, audioInfo, audioData)
 			if err != nil {
 				errMu.Lock()
@@ -188,17 +202,10 @@ func runConcurrentVideoAnalysis(ctx context.Context, videoInfo *video.VideoInfo,
 			mu.Unlock()
 		}()
 
-		// Run Caption analysis on audio if requested
 		if withCaption {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				audioInfo := &audio.AudioInfo{
-					Format:   "wav",
-					FileName: videoInfo.FileName + ".wav",
-					Size:     len(audioData),
-					Duration: videoInfo.Duration,
-				}
 				caption, err := analyzeCaption(ctx, audioInfo, audioData)
 				if err != nil {
 					errMu.Lock()
@@ -245,19 +252,19 @@ func analyzeVideoFrames(ctx context.Context, frames []video.FrameData) (*client.
 		return nil, fmt.Errorf("ollama client not found in context")
 	}
 
-	if len(frames) == 0 {
+	frameCount := len(frames)
+	if frameCount == 0 {
 		return nil, fmt.Errorf("no frames to analyze")
 	}
 
 	// Collect all frame images for batch processing
-	images := make([][]byte, len(frames))
+	images := make([][]byte, frameCount)
 	for i, frame := range frames {
 		images[i] = frame.Data
 	}
 
 	// Build timestamp info for the prompt
 	var timestampInfo strings.Builder
-	timestampInfo.WriteString("Frame timestamps: ")
 	for i, frame := range frames {
 		if i > 0 {
 			timestampInfo.WriteString(", ")
@@ -265,26 +272,23 @@ func analyzeVideoFrames(ctx context.Context, frames []video.FrameData) (*client.
 		timestampInfo.WriteString(fmt.Sprintf("Frame %d at %.1fs", i+1, frame.Timestamp))
 	}
 
-	// Single batch request with all frames
-	prompt := fmt.Sprintf(`These are %d frames extracted from a video at different timestamps.
-%s
+	// Single batch request with all frames - request JSON output
+	prompt := fmt.Sprintf(`Analyze these %d video frames. %s
 
-For each frame, provide a brief description (1-2 sentences) of what you see.
-Then provide an overall summary of what happens in the video.
+You MUST provide exactly %d frame descriptions in the JSON response, one for each frame.
 
-Format your response as:
-Frame 1: [description]
-Frame 2: [description]
-...
-Summary: [overall summary of the video]`, len(frames), timestampInfo.String())
+Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
+{"frames":[{"frame":1,"description":"..."},{"frame":2,"description":"..."},...,{"frame":%d,"description":"..."}],"summary":"..."}
+
+Provide a brief description (1-2 sentences) for EACH of the %d frames and an overall summary.`, frameCount, timestampInfo.String(), frameCount, frameCount, frameCount)
 
 	resp, err := ollamaClient.GenerateWithImages(prompt, images)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze video frames: %w", err)
 	}
 
-	// Parse the response to extract frame descriptions and summary
-	frameAnalyses, summary := parseVideoAnalysisResponse(resp.Response, frames)
+	// Parse the JSON response
+	frameAnalyses, summary := parseVideoAnalysisJSON(resp.Response, frames)
 
 	return &client.VideoAnalysisResult{
 		Frames:  frameAnalyses,
@@ -292,54 +296,64 @@ Summary: [overall summary of the video]`, len(frames), timestampInfo.String())
 	}, nil
 }
 
-// parseVideoAnalysisResponse parses the LLM response into frame descriptions and summary
-func parseVideoAnalysisResponse(response string, frames []video.FrameData) ([]client.FrameAnalysis, string) {
-	frameAnalyses := make([]client.FrameAnalysis, 0, len(frames))
-	lines := strings.Split(response, "\n")
+// videoAnalysisJSON represents the expected JSON structure from LLM
+type videoAnalysisJSON struct {
+	Frames []struct {
+		Frame       int    `json:"frame"`
+		Description string `json:"description"`
+	} `json:"frames"`
+	Summary string `json:"summary"`
+}
 
-	var summary string
-	frameDescriptions := make(map[int]string)
+// parseVideoAnalysisJSON parses JSON response from LLM into frame analyses
+func parseVideoAnalysisJSON(response string, frames []video.FrameData) ([]client.FrameAnalysis, string) {
+	frameAnalyses := make([]client.FrameAnalysis, len(frames))
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Check for frame descriptions (Frame 1:, Frame 2:, etc.)
-		for i := range frames {
-			prefix := fmt.Sprintf("Frame %d:", i+1)
-			if strings.HasPrefix(line, prefix) {
-				desc := strings.TrimSpace(strings.TrimPrefix(line, prefix))
-				frameDescriptions[i] = desc
-				break
-			}
-		}
-
-		// Check for summary
-		if strings.HasPrefix(line, "Summary:") {
-			summary = strings.TrimSpace(strings.TrimPrefix(line, "Summary:"))
-		}
-	}
-
-	// Build frame analyses with timestamps
+	// Initialize with default values
 	for i, frame := range frames {
-		desc := frameDescriptions[i]
-		if desc == "" {
-			desc = "Frame description not available"
-		}
-		frameAnalyses = append(frameAnalyses, client.FrameAnalysis{
+		frameAnalyses[i] = client.FrameAnalysis{
 			Timestamp:   frame.Timestamp,
-			Description: desc,
-		})
+			Description: "Frame description not available",
+		}
 	}
 
-	// If no summary was found, use the entire response as fallback
-	if summary == "" && len(frameDescriptions) == 0 {
-		summary = response
+	// Try to extract JSON from response (LLM might add extra text)
+	jsonStr := extractJSON(response)
+
+	// Debug logging
+	slog.Debug("Video analysis JSON parsing", "rawResponseLength", len(response), "extractedJSON", jsonStr)
+
+	var parsed videoAnalysisJSON
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		slog.Debug("Video analysis JSON parse failed", "error", err)
+		// JSON parsing failed, use entire response as summary
+		return frameAnalyses, strings.TrimSpace(response)
 	}
 
-	return frameAnalyses, summary
+	slog.Debug("Video analysis JSON parsed successfully", "frameCount", len(parsed.Frames))
+
+	// Map parsed descriptions to frame analyses
+	// Use sequential index since LLM returns frames in order
+	for i, f := range parsed.Frames {
+		if i < len(frameAnalyses) && f.Description != "" {
+			frameAnalyses[i].Description = f.Description
+		}
+	}
+
+	return frameAnalyses, parsed.Summary
+}
+
+// extractJSON extracts JSON object from a string that might contain extra text
+func extractJSON(text string) string {
+	// Find the first '{' and last '}'
+	start := strings.Index(text, "{")
+	end := strings.LastIndex(text, "}")
+
+	if start != -1 && end != -1 && end > start {
+		return text[start : end+1]
+	}
+
+	return text
 }
 
 // validateInput validates the input parameters
@@ -351,6 +365,16 @@ func validateInput(input *AnalyzeInput) error {
 		return fmt.Errorf("file_url is required")
 	}
 	return nil
+}
+
+// buildAudioInfoFromVideo creates AudioInfo from video metadata
+func buildAudioInfoFromVideo(videoInfo *video.VideoInfo, audioSize int) *audio.AudioInfo {
+	return &audio.AudioInfo{
+		Format:   "wav",
+		FileName: videoInfo.FileName + ".wav",
+		Size:     audioSize,
+		Duration: videoInfo.Duration,
+	}
 }
 
 // prepareAudioData normalizes the path and loads audio data
